@@ -22,24 +22,43 @@ jobs:
         git sparse-checkout set resources/profiles
         cd ..
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y openscad xvfb gstreamer1.0-plugins-base libwebkit2gtk-4.1-0
+    - name: Cache APT packages
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: openscad xvfb gstreamer1.0-plugins-base libwebkit2gtk-4.1-0
+        version: 1.0
+
+    - name: Cache just binary
+      id: cache-just
+      uses: actions/cache@v4
+      with:
+        path: /usr/local/bin/just
+        key: just-1.36.0-linux-x86_64
 
     - name: Install just
+      if: steps.cache-just.outputs.cache-hit != 'true'
       run: |
         wget -qO- https://github.com/casey/just/releases/download/1.36.0/just-1.36.0-x86_64-unknown-linux-musl.tar.gz | \
         sudo tar xzf - -C /usr/local/bin just
 
+    - name: Cache OrcaSlicer
+      id: cache-orca
+      uses: actions/cache@v4
+      with:
+        path: /opt/orcaslicer
+        key: orcaslicer-2.3.1-ubuntu2404
+
     - name: Install OrcaSlicer
+      if: steps.cache-orca.outputs.cache-hit != 'true'
       run: |
         ORCA_VERSION="2.3.1"
         wget "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v${ORCA_VERSION}/OrcaSlicer_Linux_AppImage_Ubuntu2404_V${ORCA_VERSION}.AppImage" -O OrcaSlicer.AppImage
         chmod +x OrcaSlicer.AppImage
         ./OrcaSlicer.AppImage --appimage-extract >/dev/null 2>&1
         sudo mv squashfs-root /opt/orcaslicer
-        sudo ln -sf /opt/orcaslicer/AppRun /usr/local/bin/orca-slicer
+
+    - name: Create OrcaSlicer symlink
+      run: sudo ln -sf /opt/orcaslicer/AppRun /usr/local/bin/orca-slicer
 
     - name: Update justfile for Linux paths
       run: |
