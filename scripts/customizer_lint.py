@@ -6,8 +6,8 @@ Validates that OpenSCAD files comply with the MakerBot Customizer specification:
 https://customizer.makerbot.com/docs
 
 Usage:
-    python customizer_lint.py file1.scad file2.scad ...
-    python customizer_lint.py --check-all projects/
+    uv run python -m scripts.customizer_lint file1.scad file2.scad ...
+    uv run python -m scripts.customizer_lint projects/
 """
 
 import argparse
@@ -15,6 +15,9 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import tree_sitter as ts
+import tree_sitter_openscad as ts_openscad
 
 
 @dataclass
@@ -41,37 +44,16 @@ class LintResult:
         return len(self.errors) == 0
 
 
-# Regex patterns for parsing OpenSCAD
+# Regex patterns for annotation validation
 PATTERNS = {
-    # Module or function declaration
-    "module_decl": re.compile(r"^\s*module\s+\w+\s*\("),
-    "function_decl": re.compile(r"^\s*function\s+\w+\s*\("),
-
     # Tab declaration: /* [Tab Name] */
     "tab_decl": re.compile(r"^\s*/\*\s*\[([^\]]+)\]\s*\*/\s*$"),
 
-    # Variable assignment: var_name = value;
-    "var_assignment": re.compile(
-        r"^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+?)\s*;\s*(?://\s*(.*))?$"
-    ),
-
-    # Description comment: // description text
-    "description_comment": re.compile(r"^\s*//\s*(.+)$"),
-
-    # Block comment start
-    "block_comment_start": re.compile(r"^\s*/\*"),
-
-    # Block comment end
-    "block_comment_end": re.compile(r"\*/\s*$"),
-
-    # Preview directive: // preview[view:X, tilt:Y]
-    "preview_directive": re.compile(r"^\s*//\s*preview\["),
-
     # Slider annotation: [min:max] or [min:step:max] or [max]
-    "slider_annotation": re.compile(r"^\[(\d+(?:\.\d+)?(?::\d+(?:\.\d+)?){0,2})\]$"),
+    "slider": re.compile(r"^\[(-?\d+(?:\.\d+)?(?::-?\d+(?:\.\d+)?){0,2})\]$"),
 
     # Dropdown annotation: [val1, val2, ...] or [val1:Label1, val2:Label2, ...]
-    "dropdown_annotation": re.compile(r"^\[([^\[\]]+(?:,[^\[\]]+)*)\]$"),
+    "dropdown": re.compile(r"^\[([^\[\]]+(?:,[^\[\]]+)*)\]$"),
 
     # Image surface annotation: [image_surface:WxH]
     "image_surface": re.compile(r"^\[image_surface:\d+x\d+\]$"),
@@ -82,26 +64,18 @@ PATTERNS = {
     # Polygon canvas annotation: [draw_polygon:WxH]
     "draw_polygon": re.compile(r"^\[draw_polygon:\d+x\d+\]$"),
 
-    # Special variable assignments ($fn, $fa, $fs)
-    "special_var": re.compile(r"^\s*\$[a-z]+\s*="),
+    # Preview directive
+    "preview": re.compile(r"^\s*//\s*preview\["),
 
-    # Computed value (contains operators or references other variables)
-    "computed_value": re.compile(r"[+\-*/]|[a-zA-Z_][a-zA-Z0-9_]*\s*[+\-*/]"),
+    # Annotation in comment: // [...]
+    "annotation_comment": re.compile(r"//\s*(\[[^\]]+\])\s*$"),
 }
 
 # Reserved tab names
 RESERVED_TABS = {"Global", "Hidden"}
 
-# Valid preview view options
-VALID_VIEWS = {
-    "north", "north east", "east", "south east",
-    "south", "south west", "west", "north west"
-}
-
-# Valid preview tilt options
-VALID_TILTS = {
-    "top", "top diagonal", "side", "bottom diagonal", "bottom"
-}
+# Create parser once
+_parser = ts.Parser(ts.Language(ts_openscad.language()))
 
 
 def parse_annotation(annotation: str) -> tuple[str, bool]:
@@ -117,7 +91,7 @@ def parse_annotation(annotation: str) -> tuple[str, bool]:
         return ("none", True)
 
     # Check for slider annotation
-    if PATTERNS["slider_annotation"].match(annotation):
+    if PATTERNS["slider"].match(annotation):
         return ("slider", True)
 
     # Check for image surface
@@ -133,7 +107,7 @@ def parse_annotation(annotation: str) -> tuple[str, bool]:
         return ("draw_polygon", True)
 
     # Check for dropdown annotation
-    if PATTERNS["dropdown_annotation"].match(annotation):
+    if PATTERNS["dropdown"].match(annotation):
         return ("dropdown", True)
 
     # If it starts with [ but doesn't match known patterns
@@ -143,51 +117,53 @@ def parse_annotation(annotation: str) -> tuple[str, bool]:
     return ("none", True)
 
 
-def is_valid_default_value(value: str) -> tuple[bool, str]:
+def get_value_type(node: ts.Node) -> tuple[str, bool, str]:
     """
-    Check if a default value is valid for Customizer.
-
-    Valid values: numbers, quoted strings, booleans, arrays of numbers/strings.
-    Invalid: expressions with operators, variable references.
+    Analyze a value node to determine if it's valid for Customizer.
 
     Returns:
-        Tuple of (is_valid, reason if invalid)
+        Tuple of (value_type, is_computed, reason)
     """
-    value = value.strip()
+    node_type = node.type
 
-    # Number (int or float)
-    if re.match(r"^-?\d+(?:\.\d+)?$", value):
-        return (True, "")
+    if node_type == "integer" or node_type == "float":
+        return ("number", False, "")
 
-    # Quoted string
-    if re.match(r'^"[^"]*"$', value):
-        return (True, "")
+    if node_type == "string":
+        return ("string", False, "")
 
-    # Boolean
-    if value in ("true", "false"):
-        return (True, "")
+    if node_type == "boolean":
+        return ("boolean", False, "")
 
-    # Array literal (simplified check)
-    if value.startswith("[") and value.endswith("]"):
-        # Check if it contains operators outside of the array
-        inner = value[1:-1]
-        # Simple array of numbers/strings is OK
-        if re.match(r"^[\d.,\s\-\"\'a-zA-Z_:]+$", inner):
-            return (True, "")
-        # Check for computed values
-        if PATTERNS["computed_value"].search(inner):
-            return (False, "contains computed expression")
-        return (True, "")
+    if node_type == "list":
+        # Check if any child is an identifier or expression
+        for child in node.children:
+            if child.type == "identifier":
+                return ("list", True, "list contains variable reference")
+            if child.type == "binary_expression":
+                return ("list", True, "list contains computed expression")
+        return ("list", False, "")
 
-    # Variable reference or computed value
-    if PATTERNS["computed_value"].search(value):
-        return (False, "contains computed expression (won't appear in Customizer UI)")
+    if node_type == "binary_expression":
+        return ("expression", True, "computed expression won't appear in Customizer UI")
 
-    # References another variable
-    if re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", value):
-        return (False, "references another variable (won't appear in Customizer UI)")
+    if node_type == "unary_expression":
+        # Negative numbers are OK
+        child = node.children[-1] if node.children else None
+        if child and child.type in ("integer", "float"):
+            return ("number", False, "")
+        return ("expression", True, "computed expression won't appear in Customizer UI")
 
-    return (True, "")
+    if node_type == "identifier":
+        return ("reference", True, "variable reference won't appear in Customizer UI")
+
+    if node_type == "ternary_expression":
+        return ("expression", True, "ternary expression won't appear in Customizer UI")
+
+    if node_type == "function_call":
+        return ("expression", True, "function call won't appear in Customizer UI")
+
+    return ("unknown", False, "")
 
 
 def lint_file(filepath: Path) -> LintResult:
@@ -195,7 +171,7 @@ def lint_file(filepath: Path) -> LintResult:
     result = LintResult(file=filepath)
 
     try:
-        content = filepath.read_text()
+        content = filepath.read_bytes()
     except Exception as e:
         result.errors.append(LintError(
             file=filepath,
@@ -204,85 +180,103 @@ def lint_file(filepath: Path) -> LintResult:
         ))
         return result
 
-    lines = content.split("\n")
+    tree = _parser.parse(content)
+    root = tree.root_node
 
     # State tracking
-    in_parameter_section = True  # Before first module/function
     current_tab: str | None = None
-    in_block_comment = False
-    previous_description: str | None = None
+    in_parameter_section = True
     found_any_tab = False
     found_any_param = False
     param_without_tab_warning_issued = False
-    line_num = 0
+    previous_comment: ts.Node | None = None
+    previous_was_description = False
 
-    for i, line in enumerate(lines, start=1):
-        line_num = i
-        stripped = line.strip()
+    # Walk through top-level nodes
+    for node in root.children:
+        line = node.start_point.row + 1  # 1-indexed
 
-        # Skip empty lines
-        if not stripped:
-            previous_description = None
+        # Check for module/function declaration (end of parameter section)
+        if node.type in ("module_item", "function_item"):
+            in_parameter_section = False
+            previous_comment = None
+            previous_was_description = False
             continue
 
-        # Track block comments
-        if PATTERNS["block_comment_start"].search(stripped):
-            # Check if it's a tab declaration
-            tab_match = PATTERNS["tab_decl"].match(stripped)
+        # Check for block comments (tab declarations)
+        if node.type == "block_comment":
+            text = node.text.decode() if node.text else ""
+            tab_match = PATTERNS["tab_decl"].match(text)
             if tab_match:
                 current_tab = tab_match.group(1)
                 found_any_tab = True
-                previous_description = None
-                continue
-            in_block_comment = True
+            previous_comment = None
+            previous_was_description = False
             continue
 
-        if in_block_comment:
-            if PATTERNS["block_comment_end"].search(stripped):
-                in_block_comment = False
-            continue
+        # Check for line comments
+        if node.type == "line_comment":
+            text = node.text.decode() if node.text else ""
 
-        # Check for module/function declaration (end of parameter section)
-        if PATTERNS["module_decl"].search(stripped) or PATTERNS["function_decl"].search(stripped):
-            in_parameter_section = False
-            previous_description = None
-            continue
-
-        # Check for description comments
-        if PATTERNS["description_comment"].match(stripped):
             # Skip preview directives
-            if PATTERNS["preview_directive"].match(stripped):
-                previous_description = None
+            if PATTERNS["preview"].match(text):
+                previous_comment = None
+                previous_was_description = False
                 continue
-            desc_match = PATTERNS["description_comment"].match(stripped)
-            if desc_match:
-                previous_description = desc_match.group(1)
+
+            # Check if it's an annotation comment (follows a variable)
+            if PATTERNS["annotation_comment"].search(text):
+                # This is an annotation, not a description
+                previous_comment = None
+                previous_was_description = False
+            else:
+                # This is a description for the next variable
+                previous_comment = node
+                previous_was_description = True
             continue
 
-        # Check for special variables ($fn, $fa, $fs)
-        if PATTERNS["special_var"].match(stripped):
-            previous_description = None
-            continue
+        # Check for variable declarations
+        if node.type == "var_declaration":
+            # Find the assignment node
+            assignment = None
+            for child in node.children:
+                if child.type == "assignment":
+                    assignment = child
+                    break
 
-        # Check for variable assignments
-        var_match = PATTERNS["var_assignment"].match(stripped)
-        if var_match:
-            var_name = var_match.group(1)
-            var_value = var_match.group(2)
-            annotation = var_match.group(3) or ""
+            if not assignment:
+                previous_comment = None
+                previous_was_description = False
+                continue
+
+            # Get variable name and value
+            var_name = None
+            var_value = None
+            for child in assignment.children:
+                if child.type == "identifier" and var_name is None:
+                    var_name = child.text.decode() if child.text else ""
+                elif child.type not in ("=", "identifier"):
+                    var_value = child
+
+            if not var_name or var_name.startswith("$"):
+                # Skip special variables like $fn
+                previous_comment = None
+                previous_was_description = False
+                continue
 
             # Skip if in Hidden tab
             if current_tab == "Hidden":
-                previous_description = None
+                previous_comment = None
+                previous_was_description = False
                 continue
 
             found_any_param = True
 
-            # Check if parameter is in the parameter section
+            # Check if parameter is after module declarations
             if not in_parameter_section:
                 result.warnings.append(LintError(
                     file=filepath,
-                    line=i,
+                    line=line,
                     message=f"Parameter '{var_name}' is after module declarations (won't be customizable)",
                     severity="warning"
                 ))
@@ -291,54 +285,66 @@ def lint_file(filepath: Path) -> LintResult:
             if not found_any_tab and not param_without_tab_warning_issued:
                 result.warnings.append(LintError(
                     file=filepath,
-                    line=i,
+                    line=line,
                     message="Parameters should be organized into tabs using /* [Tab Name] */",
                     severity="warning"
                 ))
                 param_without_tab_warning_issued = True
 
-            # Check for description
-            if not previous_description and current_tab != "Hidden":
+            # Check for description (previous comment should be a description)
+            if not previous_was_description:
                 result.warnings.append(LintError(
                     file=filepath,
-                    line=i,
+                    line=line,
                     message=f"Parameter '{var_name}' lacks a description comment",
                     severity="warning"
                 ))
 
-            # Check default value validity
-            is_valid_val, reason = is_valid_default_value(var_value)
-            if not is_valid_val:
-                result.warnings.append(LintError(
-                    file=filepath,
-                    line=i,
-                    message=f"Parameter '{var_name}' {reason}",
-                    severity="warning"
-                ))
-
-            # Check annotation validity
-            if annotation:
-                ann_type, ann_valid = parse_annotation(annotation)
-                if not ann_valid:
-                    result.errors.append(LintError(
-                        file=filepath,
-                        line=i,
-                        message=f"Parameter '{var_name}' has invalid annotation: {annotation}"
-                    ))
-            else:
-                # No annotation - that's OK but worth noting for sliders/dropdowns
-                if is_valid_val and current_tab != "Hidden":
+            # Check value type
+            if var_value:
+                value_type, is_computed, reason = get_value_type(var_value)
+                if is_computed:
                     result.warnings.append(LintError(
                         file=filepath,
-                        line=i,
-                        message=f"Parameter '{var_name}' has no UI annotation (will be a text input)",
+                        line=line,
+                        message=f"Parameter '{var_name}': {reason}",
                         severity="warning"
                     ))
 
-            previous_description = None
+            # Look for annotation in the next sibling (line comment after var)
+            # Find the node index and check the next sibling
+            annotation_found = False
+            node_idx = root.children.index(node)
+            if node_idx + 1 < len(root.children):
+                next_node = root.children[node_idx + 1]
+                if next_node.type == "line_comment":
+                    comment_text = next_node.text.decode() if next_node.text else ""
+                    ann_match = PATTERNS["annotation_comment"].search(comment_text)
+                    if ann_match:
+                        annotation = ann_match.group(1)
+                        ann_type, ann_valid = parse_annotation(annotation)
+                        if not ann_valid:
+                            result.errors.append(LintError(
+                                file=filepath,
+                                line=next_node.start_point.row + 1,
+                                message=f"Parameter '{var_name}' has invalid annotation: {annotation}"
+                            ))
+                        annotation_found = True
+
+            if not annotation_found and not is_computed:
+                result.warnings.append(LintError(
+                    file=filepath,
+                    line=line,
+                    message=f"Parameter '{var_name}' has no UI annotation (will be a text input)",
+                    severity="warning"
+                ))
+
+            previous_comment = None
+            previous_was_description = False
             continue
 
-        previous_description = None
+        previous_comment = None
+        previous_was_description = False
 
     # Check if any parameters were found
     if not found_any_param:
