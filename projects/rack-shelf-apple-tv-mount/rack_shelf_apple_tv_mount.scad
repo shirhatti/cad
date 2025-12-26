@@ -105,11 +105,59 @@ module ventilation_grid(width, depth, hole_dia, spacing) {
 module mounting_plate() {
     plate_width = APPLETV_WIDTH + 2 * WALL_THICKNESS + 20;
     plate_depth = APPLETV_DEPTH + 2 * WALL_THICKNESS + 10;
+    tray_inner_width = APPLETV_WIDTH + CLEARANCE;
+    tray_inner_depth = APPLETV_DEPTH + CLEARANCE;
 
     difference() {
-        // Main plate
-        linear_extrude(height=BASE_THICKNESS)
-        rounded_square(plate_width, CORNER_RADIUS, center=true);
+        union() {
+            // Main plate
+            linear_extrude(height=BASE_THICKNESS)
+            rounded_square(plate_width, CORNER_RADIUS, center=true);
+
+            // Solid support pads for ribs (4 pads)
+            rib_pad_positions = [
+                [-tray_inner_width/2 + 10, 0],
+                [ tray_inner_width/2 - 10, 0],
+                [0, -tray_inner_depth/2 + 10],
+                [0,  tray_inner_depth/2 - 10]
+            ];
+            for (pos = rib_pad_positions) {
+                translate([pos[0], pos[1], 0])
+                linear_extrude(height=BASE_THICKNESS)
+                square([52, WALL_THICKNESS + 2], center=true);
+            }
+
+            // Solid support pads for corner pegs (4 pads)
+            peg_pad_positions = [
+                [-tray_inner_width/2, -tray_inner_depth/2],
+                [ tray_inner_width/2, -tray_inner_depth/2],
+                [ tray_inner_width/2,  tray_inner_depth/2],
+                [-tray_inner_width/2,  tray_inner_depth/2]
+            ];
+            for (pos = peg_pad_positions) {
+                translate([pos[0], pos[1], 0])
+                linear_extrude(height=BASE_THICKNESS)
+                circle(d=WALL_THICKNESS * 3.5);
+            }
+
+            // Solid support pads for side lips (4 pads)
+            lip_pad_positions = [
+                [0, -tray_inner_depth/2],  // Front
+                [0,  tray_inner_depth/2],  // Back
+                [-tray_inner_width/2, 0],  // Left
+                [ tray_inner_width/2, 0]   // Right
+            ];
+            for (pos = lip_pad_positions) {
+                translate([pos[0], pos[1], 0])
+                linear_extrude(height=BASE_THICKNESS)
+                square([27, WALL_THICKNESS + 2], center=true);
+            }
+
+            // Solid support pad for cable slot (rear center)
+            translate([0, tray_inner_depth/2, 0])
+            linear_extrude(height=BASE_THICKNESS)
+            square([47, WALL_THICKNESS + 7], center=true);
+        }
 
         // Ventilation holes
         ventilation_grid(
@@ -118,19 +166,6 @@ module mounting_plate() {
             hole_dia=VENT_HOLE_DIA,
             spacing=VENT_SPACING
         );
-
-        // Weight reduction cutouts (corners)
-        corner_positions = [
-            [-plate_width/2 + 15, -plate_depth/2 + 15],
-            [ plate_width/2 - 15, -plate_depth/2 + 15],
-            [ plate_width/2 - 15,  plate_depth/2 - 15],
-            [-plate_width/2 + 15,  plate_depth/2 - 15]
-        ];
-
-        for (pos = corner_positions) {
-            translate([pos[0], pos[1], -0.1])
-            cylinder(d=15, h=BASE_THICKNESS + 0.2);
-        }
     }
 
     // Add clips at strategic positions
