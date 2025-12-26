@@ -25,7 +25,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y openscad xvfb libglu1-mesa wget
+        sudo apt-get install -y openscad xvfb gstreamer1.0-plugins-base libwebkit2gtk-4.1-0
 
     - name: Install just
       run: |
@@ -34,13 +34,17 @@ jobs:
 
     - name: Install OrcaSlicer
       run: |
-        ORCA_VERSION="v2.3.1"
-        wget "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/${ORCA_VERSION}/OrcaSlicer_Linux_${ORCA_VERSION}.AppImage" -O OrcaSlicer.AppImage
+        ORCA_VERSION="2.3.1"
+        wget "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v${ORCA_VERSION}/OrcaSlicer_Linux_AppImage_Ubuntu2404_V${ORCA_VERSION}.AppImage" -O OrcaSlicer.AppImage
         chmod +x OrcaSlicer.AppImage
-        sudo mv OrcaSlicer.AppImage /usr/local/bin/orca-slicer
+        ./OrcaSlicer.AppImage --appimage-extract >/dev/null 2>&1
+        sudo mv squashfs-root /opt/orcaslicer
+        sudo ln -sf /opt/orcaslicer/AppRun /usr/local/bin/orca-slicer
 
     - name: Update justfile for Linux paths
       run: |
+        # Replace brew backtick expression (evaluated at parse time, fails on Linux)
+        sed -i 's|_openscad_app := .*|_openscad_app := ""|' justfile
         # Update OpenSCAD binary path
         sed -i 's|_openscad_bin := .*|_openscad_bin := "openscad"|' justfile
         # Update OrcaSlicer binary path
@@ -53,10 +57,18 @@ jobs:
         xvfb-run orca-slicer --help | head -5
 
     - name: Run syntax check
-      run: just check
+      run: xvfb-run just check
 
     - name: Render models
-      run: just build
+      run: |
+        mkdir -p artifacts/stl
+        find projects -name "*.scad" -type f | while read -r f; do
+          project_name=$(dirname "$f" | sed 's|projects/||')
+          basename=$(basename "$f" .scad)
+          out="artifacts/stl/${project_name}__${basename}.stl"
+          echo "Rendering $f -> $out"
+          xvfb-run openscad -o "$out" "$f"
+        done
 
     - name: Slice models
       run: |
