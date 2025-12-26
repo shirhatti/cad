@@ -120,14 +120,7 @@ jobs:
         done
 
     - name: Slice models
-      run: |
-        find projects -name "*.scad" -type f | while read -r model; do
-          project_name=$(dirname "$model" | sed 's|projects/||')
-          basename=$(basename "$model" .scad)
-          fullname="${project_name}__${basename}"
-          echo "Slicing $fullname..."
-          xvfb-run just slice "$fullname"
-        done
+      run: just slice-all
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4

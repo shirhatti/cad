@@ -167,6 +167,9 @@ render-hq file:
     # Also create a symlink without timestamp for easy reference
     ln -sf "${basename}_${timestamp}.stl" "artifacts/stl/${basename}.stl"
 
+# Helper to run commands with xvfb if needed (headless environment)
+_xvfb_run := if env("DISPLAY", "") == "" { "xvfb-run -a" } else { "" }
+
 # Slice an STL file to 3MF using Orca Slicer (Bambu A1)
 slice file:
     #!/usr/bin/env bash
@@ -196,7 +199,8 @@ slice file:
     abs_input="$(pwd)/$input"
     abs_output="$(pwd)/$output"
 
-    {{_orca_slicer_bin}} \
+    # Use xvfb-run in headless environments for thumbnail generation
+    {{_xvfb_run}} {{_orca_slicer_bin}} \
         --load-settings "$settings" \
         --slice 0 \
         --export-3mf "$abs_output" \
@@ -214,6 +218,24 @@ slice file:
         cat "artifacts/logs/${basename}_${timestamp}_slice.log"
         exit 1
     fi
+
+# Slice all models in artifacts/stl
+slice-all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d "artifacts/stl" ]; then
+        echo "Error: artifacts/stl not found. Run 'just build' first."
+        exit 1
+    fi
+    for stl in artifacts/stl/*.stl; do
+        [ -f "$stl" ] || continue
+        # Skip symlinks (we only want timestamped files)
+        [ -L "$stl" ] && continue
+        basename=$(basename "$stl" .stl)
+        echo "Slicing $basename..."
+        just slice "$basename"
+    done
+    echo "✓ All models sliced. 3MF files in artifacts/gcode/"
 
 # Open sliced 3MF in Orca Slicer for review and manual printing
 open-slice file:
