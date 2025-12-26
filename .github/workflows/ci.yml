@@ -53,10 +53,10 @@ jobs:
         xvfb-run orca-slicer --help | head -5
 
     - name: Run syntax check
-      run: just check
+      run: xvfb-run just check
 
     - name: Render models
-      run: just build
+      run: xvfb-run just build
 
     - name: Slice models
       run: |
