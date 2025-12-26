@@ -2,6 +2,43 @@
 default:
     @just --list
 
+# ===== SETUP & DEPENDENCIES =====
+
+# Bootstrap uv (Python package manager)
+_ensure-uv:
+    #!/usr/bin/env bash
+    if ! command -v uv &> /dev/null; then
+        echo "Installing uv..."
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        export PATH="$HOME/.local/bin:$PATH"
+    fi
+
+# Install Python dependencies and pre-commit hooks
+setup: _ensure-uv
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Syncing Python dependencies..."
+    uv sync
+    echo "Installing pre-commit hooks..."
+    uv run pre-commit install
+    echo "✓ Setup complete!"
+
+# ===== LINTING =====
+
+# Run Customizer linter on all OpenSCAD files
+lint: _ensure-uv
+    uv run python -m scripts.customizer_lint projects/
+
+# Run Customizer linter in strict mode (warnings are errors)
+lint-strict: _ensure-uv
+    uv run python -m scripts.customizer_lint --strict projects/
+
+# Run all pre-commit hooks on all files
+pre-commit: _ensure-uv
+    uv run pre-commit run --all-files
+
+# ===== OPENSCAD =====
+
 # Find OpenSCAD binary (Homebrew install)
 _openscad_app := `brew info --cask openscad --json=v2 2>/dev/null | jq -r '.casks[0].artifacts[] | select(.app?) | .app[0]'`
 _openscad := "/Applications" / _openscad_app
@@ -101,18 +138,15 @@ gui file:
 clean:
     rm -rf artifacts/
 
-# Run OpenSCAD syntax check on all files
+# Validate models render without errors (catches manifold/geometry issues)
 check:
     #!/usr/bin/env bash
     set -euo pipefail
-    openscad() { {{_openscad_bin}} "$@" 2>/dev/null; }
     failed=0
-
-    # Find all .scad files in projects/
     find projects -name "*.scad" -type f | while read -r f; do
-        echo "Checking $f..."
-        if openscad -o /dev/null "$f" 2>&1 | grep -q "ERROR\|TRACE\|WARNING"; then
-            echo "  ✗ ERROR"
+        echo "Rendering $f..."
+        if ! {{_openscad_bin}} -o /dev/null "$f" 2>/dev/null; then
+            echo "  ✗ FAILED"
             failed=1
         else
             echo "  ✓ OK"

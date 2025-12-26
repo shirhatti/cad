@@ -1,49 +1,78 @@
 // Rack Shelf Apple TV Mount
 // Designed to clip into ventilation slots on 1U 19" rack shelf
-//
-// Shelf specifications:
-//   - Vent slot dimensions: 35.5mm x 5mm (from drawing)
-//   - Slot spacing: 20mm center-to-center
-//   - Shelf depth: 203mm (8")
-//
-// Apple TV 4K (3rd generation):
-//   - Width: 93.0mm
-//   - Depth: 93.0mm
-//   - Height: 31.0mm
-//   - Weight: 208g (Wi-Fi) / 214g (Wi-Fi+Ethernet)
+// Compatible with MakerBot Customizer: https://customizer.makerbot.com/docs
 
-$fn = 64;
+// preview[view:south, tilt:top diagonal]
 
-// ===== SHELF DIMENSIONS =====
-SLOT_LENGTH = 35.5;
-SLOT_WIDTH = 5.0;
-SLOT_SPACING = 20.0;
-SHELF_THICKNESS = 1.0;  // SPCC 1mm thickness
+/* [Apple TV Dimensions] */
+// Width of Apple TV device
+appletv_width = 93.0; // [80:0.5:120]
 
-// ===== APPLE TV DIMENSIONS =====
-APPLETV_WIDTH = 93.0;
-APPLETV_DEPTH = 93.0;
-APPLETV_HEIGHT = 31.0;
+// Depth of Apple TV device
+appletv_depth = 93.0; // [80:0.5:120]
 
-// ===== DESIGN PARAMETERS =====
-BASE_THICKNESS = 3.0;
-WALL_THICKNESS = 2.5;
-CLEARANCE = 1.0;
-CORNER_RADIUS = 3.0;
+// Height of Apple TV device
+appletv_height = 31.0; // [20:0.5:50]
 
-// Clip parameters (to attach to shelf slots)
-CLIP_WIDTH = 4.5;  // Slightly smaller than slot width for easy insertion
-CLIP_LENGTH = 30.0;  // Fits within slot length
-CLIP_DEPTH = 8.0;  // How far clip extends below shelf
-CLIP_FLEX_THICKNESS = 1.2;  // Thin flex section for snap-fit
+/* [Rack Shelf Dimensions] */
+// Length of ventilation slot opening
+slot_length = 35.5; // [20:0.5:50]
 
-// Tray parameters
-TRAY_HEIGHT = 4.0;
-LIP_HEIGHT = 6.0;
+// Width of ventilation slot opening
+slot_width = 5.0; // [3:0.5:10]
 
-// Ventilation
-VENT_HOLE_DIA = 6.0;
-VENT_SPACING = 12.0;
+// Center-to-center spacing between slots
+slot_spacing = 20.0; // [15:0.5:30]
+
+// Thickness of shelf metal (SPCC)
+shelf_thickness = 1.0; // [0.5:0.1:3]
+
+/* [Design Parameters] */
+// Thickness of base plate
+base_thickness = 3.0; // [2:0.5:6]
+
+// Wall thickness for structural elements
+wall_thickness = 2.5; // [1.5:0.5:5]
+
+// Clearance between device and tray
+clearance = 1.0; // [0.5:0.25:3]
+
+// Radius for rounded corners
+corner_radius = 3.0; // [1:0.5:10]
+
+// Height of tray walls
+tray_height = 4.0; // [2:0.5:8]
+
+// Height of retaining lips
+lip_height = 6.0; // [3:0.5:12]
+
+/* [Clip Parameters] */
+// Width of snap-fit clips
+clip_width = 4.5; // [3:0.25:6]
+
+// Length of snap-fit clips
+clip_length = 30.0; // [20:1:40]
+
+// Depth of clip below shelf
+clip_depth = 8.0; // [5:0.5:15]
+
+// Thickness of flex section
+clip_flex_thickness = 1.2; // [0.8:0.1:2]
+
+/* [Ventilation] */
+// Diameter of ventilation holes
+vent_hole_dia = 6.0; // [4:0.5:12]
+
+// Spacing between ventilation holes
+vent_spacing = 12.0; // [8:1:20]
+
+/* [Quality] */
+// Resolution for curved surfaces
+quality = 64; // [16:Low, 32:Medium, 64:High, 128:Ultra]
+
+/* [Hidden] */
+// Internal computed values - not shown in Customizer
+$fn = quality;
 
 // ===== HELPER MODULES =====
 
@@ -63,26 +92,26 @@ module shelf_clip() {
     difference() {
         union() {
             // Main clip body that goes through slot
-            translate([0, 0, -CLIP_DEPTH/2])
-            cube([CLIP_LENGTH, CLIP_WIDTH, CLIP_DEPTH], center=true);
+            translate([0, 0, -clip_depth/2])
+            cube([clip_length, clip_width, clip_depth], center=true);
 
             // Retention tab (above shelf) - minimum 1mm thickness for printability
-            translate([0, 0, SHELF_THICKNESS + 0.5])
-            cube([CLIP_LENGTH + 1.5, CLIP_WIDTH + 1.5, 1.0], center=true);
+            translate([0, 0, shelf_thickness + 0.5])
+            cube([clip_length + 1.5, clip_width + 1.5, 1.0], center=true);
 
             // Hook at bottom with angled support (45° max for printability)
             // Thickened to minimum 1mm for structural integrity
-            translate([0, 0, -CLIP_DEPTH - 0.75])
+            translate([0, 0, -clip_depth - 0.75])
             hull() {
-                cube([CLIP_LENGTH - 2, CLIP_WIDTH - 0.5, 1.0], center=true);
+                cube([clip_length - 2, clip_width - 0.5, 1.0], center=true);
                 translate([0, 0, -1.5])
-                cube([CLIP_LENGTH + 0.5, CLIP_WIDTH + 1, 1.0], center=true);
+                cube([clip_length + 0.5, clip_width + 1, 1.0], center=true);
             }
         }
 
         // Tapered entry for easier insertion
         translate([0, 0, 0.5])
-        cylinder(d1=CLIP_WIDTH + 1, d2=CLIP_WIDTH - 0.5, h=2, center=true);
+        cylinder(d1=clip_width + 1, d2=clip_width - 0.5, h=2, center=true);
     }
 }
 
@@ -96,23 +125,23 @@ module ventilation_grid(width, depth, hole_dia, spacing) {
     for (x = [0 : count_x - 1]) {
         for (y = [0 : count_y - 1]) {
             translate([start_x + x * spacing, start_y + y * spacing, -0.1])
-            cylinder(d=hole_dia, h=BASE_THICKNESS + TRAY_HEIGHT + 0.2);
+            cylinder(d=hole_dia, h=base_thickness + tray_height + 0.2);
         }
     }
 }
 
 // Module: Base mounting plate
 module mounting_plate() {
-    plate_width = APPLETV_WIDTH + 2 * WALL_THICKNESS + 20;
-    plate_depth = APPLETV_DEPTH + 2 * WALL_THICKNESS + 10;
-    tray_inner_width = APPLETV_WIDTH + CLEARANCE;
-    tray_inner_depth = APPLETV_DEPTH + CLEARANCE;
+    plate_width = appletv_width + 2 * wall_thickness + 20;
+    plate_depth = appletv_depth + 2 * wall_thickness + 10;
+    tray_inner_width = appletv_width + clearance;
+    tray_inner_depth = appletv_depth + clearance;
 
     difference() {
         union() {
             // Main plate
-            linear_extrude(height=BASE_THICKNESS)
-            rounded_square(plate_width, CORNER_RADIUS, center=true);
+            linear_extrude(height=base_thickness)
+            rounded_square(plate_width, corner_radius, center=true);
 
             // Solid support pads for ribs (4 pads)
             rib_pad_positions = [
@@ -123,8 +152,8 @@ module mounting_plate() {
             ];
             for (pos = rib_pad_positions) {
                 translate([pos[0], pos[1], 0])
-                linear_extrude(height=BASE_THICKNESS)
-                square([52, WALL_THICKNESS + 2], center=true);
+                linear_extrude(height=base_thickness)
+                square([52, wall_thickness + 2], center=true);
             }
 
             // Solid support pads for corner pegs (4 pads)
@@ -136,8 +165,8 @@ module mounting_plate() {
             ];
             for (pos = peg_pad_positions) {
                 translate([pos[0], pos[1], 0])
-                linear_extrude(height=BASE_THICKNESS)
-                circle(d=WALL_THICKNESS * 3.5);
+                linear_extrude(height=base_thickness)
+                circle(d=wall_thickness * 3.5);
             }
 
             // Solid support pads for side lips (4 pads)
@@ -149,45 +178,45 @@ module mounting_plate() {
             ];
             for (pos = lip_pad_positions) {
                 translate([pos[0], pos[1], 0])
-                linear_extrude(height=BASE_THICKNESS)
-                square([27, WALL_THICKNESS + 2], center=true);
+                linear_extrude(height=base_thickness)
+                square([27, wall_thickness + 2], center=true);
             }
 
             // Solid support pad for cable slot (rear center)
             translate([0, tray_inner_depth/2, 0])
-            linear_extrude(height=BASE_THICKNESS)
-            square([47, WALL_THICKNESS + 7], center=true);
+            linear_extrude(height=base_thickness)
+            square([47, wall_thickness + 7], center=true);
         }
 
         // Ventilation holes
         ventilation_grid(
             width=plate_width - 20,
             depth=plate_depth - 20,
-            hole_dia=VENT_HOLE_DIA,
-            spacing=VENT_SPACING
+            hole_dia=vent_hole_dia,
+            spacing=vent_spacing
         );
     }
 
     // Add clips at strategic positions
     // Front clips (2)
-    clip_y_front = APPLETV_DEPTH/2 + WALL_THICKNESS + 5;
-    for (x = [-SLOT_SPACING, SLOT_SPACING]) {
-        translate([x, clip_y_front, BASE_THICKNESS])
+    clip_y_front = appletv_depth/2 + wall_thickness + 5;
+    for (x = [-slot_spacing, slot_spacing]) {
+        translate([x, clip_y_front, base_thickness])
         shelf_clip();
     }
 
     // Rear clips (2)
-    clip_y_rear = -(APPLETV_DEPTH/2 + WALL_THICKNESS + 5);
-    for (x = [-SLOT_SPACING, SLOT_SPACING]) {
-        translate([x, clip_y_rear, BASE_THICKNESS])
+    clip_y_rear = -(appletv_depth/2 + wall_thickness + 5);
+    for (x = [-slot_spacing, slot_spacing]) {
+        translate([x, clip_y_rear, base_thickness])
         shelf_clip();
     }
 }
 
 // Module: Apple TV tray with retaining lips
 module appletv_tray() {
-    tray_inner_width = APPLETV_WIDTH + CLEARANCE;
-    tray_inner_depth = APPLETV_DEPTH + CLEARANCE;
+    tray_inner_width = appletv_width + clearance;
+    tray_inner_depth = appletv_depth + clearance;
 
     // Bottom support ribs (Apple TV rests on these)
     // Extended from bottom of base plate for proper support
@@ -201,8 +230,8 @@ module appletv_tray() {
     for (pos = rib_positions) {
         translate([pos[0], pos[1], 0])
         rotate([0, 0, pos[2]])
-        linear_extrude(height=BASE_THICKNESS + TRAY_HEIGHT)
-        square([50, WALL_THICKNESS], center=true);
+        linear_extrude(height=base_thickness + tray_height)
+        square([50, wall_thickness], center=true);
     }
 
     // Corner retaining clips - extended from bottom for support
@@ -215,8 +244,8 @@ module appletv_tray() {
 
     for (pos = clip_positions) {
         translate([pos[0], pos[1], 0])
-        linear_extrude(height=BASE_THICKNESS + TRAY_HEIGHT + LIP_HEIGHT)
-        circle(d=WALL_THICKNESS * 2.5);
+        linear_extrude(height=base_thickness + tray_height + lip_height)
+        circle(d=wall_thickness * 2.5);
     }
 
     // Side lips (prevent sliding) - extended from bottom for support
@@ -231,15 +260,15 @@ module appletv_tray() {
     for (pos = lip_positions) {
         translate([pos[0], pos[1], 0])
         rotate([0, 0, pos[2]])
-        linear_extrude(height=BASE_THICKNESS + TRAY_HEIGHT + LIP_HEIGHT)
-        translate([0, -WALL_THICKNESS/2, 0])
-        square([lip_length, WALL_THICKNESS], center=true);
+        linear_extrude(height=base_thickness + tray_height + lip_height)
+        translate([0, -wall_thickness/2, 0])
+        square([lip_length, wall_thickness], center=true);
     }
 
     // Cable management slot (rear center) - extended from bottom for support
     translate([0, tray_inner_depth/2, 0])
-    linear_extrude(height=BASE_THICKNESS + TRAY_HEIGHT + LIP_HEIGHT)
-    square([45, WALL_THICKNESS + 5], center=true);
+    linear_extrude(height=base_thickness + tray_height + lip_height)
+    square([45, wall_thickness + 5], center=true);
 }
 
 // ===== MAIN ASSEMBLY =====

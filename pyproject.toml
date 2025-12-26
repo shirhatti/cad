@@ -1,0 +1,27 @@
+[project]
+name = "cad-tools"
+version = "0.1.0"
+description = "OpenSCAD CAD project tools including MakerBot Customizer linting"
+requires-python = ">=3.11"
+dependencies = [
+    "tree-sitter>=0.25.2",
+    "tree-sitter-openscad",
+]
+
+[project.scripts]
+customizer-lint = "scripts.customizer_lint:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["scripts"]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.0.0",
+]
+
+[tool.uv.sources]
+tree-sitter-openscad = { git = "https://github.com/openscad/tree-sitter-openscad" }
