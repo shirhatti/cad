@@ -155,6 +155,7 @@ module appletv_tray() {
     tray_inner_depth = APPLETV_DEPTH + CLEARANCE;
 
     // Bottom support ribs (Apple TV rests on these)
+    // Extended from bottom of base plate for proper support
     rib_positions = [
         [-tray_inner_width/2 + 10, 0, 0],
         [ tray_inner_width/2 - 10, 0, 0],
@@ -163,13 +164,13 @@ module appletv_tray() {
     ];
 
     for (pos = rib_positions) {
-        translate([pos[0], pos[1], BASE_THICKNESS])
+        translate([pos[0], pos[1], 0])
         rotate([0, 0, pos[2]])
-        linear_extrude(height=TRAY_HEIGHT)
+        linear_extrude(height=BASE_THICKNESS + TRAY_HEIGHT)
         square([50, WALL_THICKNESS], center=true);
     }
 
-    // Corner retaining clips
+    // Corner retaining clips - extended from bottom for support
     clip_positions = [
         [-tray_inner_width/2, -tray_inner_depth/2],
         [ tray_inner_width/2, -tray_inner_depth/2],
@@ -178,12 +179,12 @@ module appletv_tray() {
     ];
 
     for (pos = clip_positions) {
-        translate([pos[0], pos[1], BASE_THICKNESS])
-        linear_extrude(height=TRAY_HEIGHT + LIP_HEIGHT)
+        translate([pos[0], pos[1], 0])
+        linear_extrude(height=BASE_THICKNESS + TRAY_HEIGHT + LIP_HEIGHT)
         circle(d=WALL_THICKNESS * 2.5);
     }
 
-    // Side lips (prevent sliding)
+    // Side lips (prevent sliding) - extended from bottom for support
     lip_length = 25;
     lip_positions = [
         [0, -tray_inner_depth/2, 0],  // Front
@@ -193,16 +194,16 @@ module appletv_tray() {
     ];
 
     for (pos = lip_positions) {
-        translate([pos[0], pos[1], BASE_THICKNESS + TRAY_HEIGHT])
+        translate([pos[0], pos[1], 0])
         rotate([0, 0, pos[2]])
-        linear_extrude(height=LIP_HEIGHT)
+        linear_extrude(height=BASE_THICKNESS + TRAY_HEIGHT + LIP_HEIGHT)
         translate([0, -WALL_THICKNESS/2, 0])
         square([lip_length, WALL_THICKNESS], center=true);
     }
 
-    // Cable management slot (rear center)
-    translate([0, tray_inner_depth/2, BASE_THICKNESS])
-    linear_extrude(height=TRAY_HEIGHT + LIP_HEIGHT)
+    // Cable management slot (rear center) - extended from bottom for support
+    translate([0, tray_inner_depth/2, 0])
+    linear_extrude(height=BASE_THICKNESS + TRAY_HEIGHT + LIP_HEIGHT)
     square([45, WALL_THICKNESS + 5], center=true);
 }
 
