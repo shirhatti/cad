@@ -12,9 +12,18 @@ The upstream OrcaSlicer profiles (from `.orca-slicer` submodule) work in the GUI
 **Solution**: The GUI automatically adds this when slicing, but the CLI does not. Our machine override adds the required `layer_change_gcode`.
 
 ### Process Profile Override
-**Issue**: Supports are disabled by default in upstream profiles, requiring manual enabling in GUI.
+**Issues**:
+1. Supports are disabled by default in upstream profiles, requiring manual enabling in GUI.
+2. Default speeds are conservative (60mm/s walls, 100mm/s infill), resulting in 2-3x longer print times than typical GUI usage.
+3. Adaptive layer heights enabled by default cause inconsistent layer heights and longer print times on complex geometry.
+4. Settings don't match Bambu Studio defaults (different top layers, infill density, no arc fitting).
 
-**Solution**: Our process override enables automatic support generation by default for CLI builds, ensuring models print successfully.
+**Solutions**: Our process override:
+- Enables automatic support generation by default for CLI builds
+- Sets faster print speeds matching Bambu Studio (200mm/s outer walls, 300mm/s inner walls, 270mm/s infill)
+- Disables adaptive layer heights for consistent 0.2mm layers throughout
+- Enables arc fitting for smoother curves and better surface quality
+- Matches Bambu Studio quality settings (5 top layers, 15% infill)
 
 ## Structure
 
@@ -24,7 +33,7 @@ The upstream OrcaSlicer profiles (from `.orca-slicer` submodule) work in the GUI
     ├── machine/
     │   └── Bambu Lab A1 0.4 nozzle.json  # layer_change_gcode fix
     └── process/
-        └── 0.20mm Standard @BBL A1.json  # enable supports by default
+        └── 0.20mm Standard @BBL A1.json  # enable supports + faster speeds
 ```
 
 Filament profiles are loaded directly from the upstream submodule (`.orca-slicer/resources/profiles/BBL/filament/`).
