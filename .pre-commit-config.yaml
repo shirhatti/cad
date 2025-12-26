@@ -17,7 +17,7 @@ repos:
       - id: openscad-syntax
         name: OpenSCAD Syntax Check
         description: Validate OpenSCAD syntax using openscad CLI (skipped if openscad not available)
-        entry: bash -c 'command -v openscad >/dev/null || exit 0; for f in "$@"; do openscad -o /dev/null "$f" 2>&1 | grep -qE "ERROR|TRACE" && { echo "Syntax error in $f"; exit 1; }; done' --
+        entry: bash -c 'command -v openscad >/dev/null || exit 0; for f in "$@"; do if ! openscad -o /dev/null "$f" 2>/dev/null; then echo "Syntax error in $f"; exit 1; fi; done' --
         language: system
         files: \.scad$
         types: [file]
