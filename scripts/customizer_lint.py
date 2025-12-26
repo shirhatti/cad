@@ -166,6 +166,34 @@ def get_value_type(node: ts.Node) -> tuple[str, bool, str]:
     return ("unknown", False, "")
 
 
+def find_syntax_errors(node: ts.Node, errors: list[tuple[int, int, str]] | None = None) -> list[tuple[int, int, str]]:
+    """Find all syntax errors in the AST.
+
+    Returns list of (line, column, description) tuples.
+    """
+    if errors is None:
+        errors = []
+
+    if node.type == "ERROR":
+        text = node.text.decode()[:20] if node.text else ""
+        errors.append((
+            node.start_point.row + 1,
+            node.start_point.column + 1,
+            f"syntax error near '{text}...'" if len(text) == 20 else f"syntax error near '{text}'"
+        ))
+    elif node.is_missing:
+        errors.append((
+            node.start_point.row + 1,
+            node.start_point.column + 1,
+            f"missing '{node.type}'"
+        ))
+
+    for child in node.children:
+        find_syntax_errors(child, errors)
+
+    return errors
+
+
 def lint_file(filepath: Path) -> LintResult:
     """Lint a single OpenSCAD file for Customizer compliance."""
     result = LintResult(file=filepath)
@@ -182,6 +210,17 @@ def lint_file(filepath: Path) -> LintResult:
 
     tree = _parser.parse(content)
     root = tree.root_node
+
+    # Check for syntax errors first
+    if root.has_error:
+        for line, col, msg in find_syntax_errors(root):
+            result.errors.append(LintError(
+                file=filepath,
+                line=line,
+                message=f"Syntax error at column {col}: {msg}"
+            ))
+        # Don't continue with Customizer checks if there are syntax errors
+        return result
 
     # State tracking
     current_tab: str | None = None

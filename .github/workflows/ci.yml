@@ -91,10 +91,10 @@ jobs:
     - name: Sync Python dependencies
       run: uv sync
 
-    - name: Run Customizer linter
+    - name: Lint OpenSCAD files
       run: uv run python -m scripts.customizer_lint projects/
 
-    - name: Run syntax check
+    - name: Validate models render
       run: xvfb-run just check
 
     - name: Render models

@@ -138,18 +138,15 @@ gui file:
 clean:
     rm -rf artifacts/
 
-# Run OpenSCAD syntax check on all files
+# Validate models render without errors (catches manifold/geometry issues)
 check:
     #!/usr/bin/env bash
     set -euo pipefail
-    openscad() { {{_openscad_bin}} "$@" 2>/dev/null; }
     failed=0
-
-    # Find all .scad files in projects/
     find projects -name "*.scad" -type f | while read -r f; do
-        echo "Checking $f..."
-        if openscad -o /dev/null "$f" 2>&1 | grep -q "ERROR\|TRACE\|WARNING"; then
-            echo "  ✗ ERROR"
+        echo "Rendering $f..."
+        if ! {{_openscad_bin}} -o /dev/null "$f" 2>/dev/null; then
+            echo "  ✗ FAILED"
             failed=1
         else
             echo "  ✓ OK"
