@@ -23,9 +23,7 @@ jobs:
         cd ..
 
     - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y openscad xvfb libglu1-mesa wget
+      run: sudo apt-get install -y openscad xvfb
 
     - name: Install just
       run: |
