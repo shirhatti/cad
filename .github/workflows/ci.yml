@@ -108,6 +108,17 @@ jobs:
           xvfb-run openscad -o "$out" "$f"
         done
 
+    - name: Render preview images
+      run: |
+        mkdir -p artifacts/preview
+        find projects -name "*.scad" -type f | while read -r f; do
+          project_name=$(dirname "$f" | sed 's|projects/||')
+          basename=$(basename "$f" .scad)
+          out="artifacts/preview/${project_name}__${basename}.png"
+          echo "Rendering preview $f -> $out"
+          xvfb-run openscad -o "$out" --autocenter --viewall --camera=0,0,0,55,0,25,500 "$f"
+        done
+
     - name: Slice models
       run: |
         find projects -name "*.scad" -type f | while read -r model; do
@@ -125,6 +136,7 @@ jobs:
         name: build-artifacts
         path: |
           artifacts/stl/*.stl
+          artifacts/preview/*.png
           artifacts/gcode/*.3mf
           artifacts/logs/*.log
         retention-days: 7
