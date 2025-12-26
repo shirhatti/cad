@@ -23,7 +23,7 @@ jobs:
         cd ..
 
     - name: Install dependencies
-      run: sudo apt-get install -y openscad xvfb
+      run: sudo apt-get install -y openscad xvfb gstreamer1.0-plugins-base
 
     - name: Install just
       run: |
