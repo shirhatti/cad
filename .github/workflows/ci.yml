@@ -23,7 +23,7 @@ jobs:
         cd ..
 
     - name: Install dependencies
-      run: sudo apt-get install -y openscad xvfb gstreamer1.0-plugins-base
+      run: sudo apt-get install -y openscad xvfb gstreamer1.0-plugins-base libwebkit2gtk-4.1-0
 
     - name: Install just
       run: |
