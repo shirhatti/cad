@@ -34,10 +34,12 @@ jobs:
 
     - name: Install OrcaSlicer
       run: |
-        ORCA_VERSION="v2.3.1"
-        wget "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/${ORCA_VERSION}/OrcaSlicer_Linux_${ORCA_VERSION}.AppImage" -O OrcaSlicer.AppImage
+        ORCA_VERSION="2.3.1"
+        wget "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v${ORCA_VERSION}/OrcaSlicer_Linux_AppImage_Ubuntu2404_V${ORCA_VERSION}.AppImage" -O OrcaSlicer.AppImage
         chmod +x OrcaSlicer.AppImage
-        sudo mv OrcaSlicer.AppImage /usr/local/bin/orca-slicer
+        ./OrcaSlicer.AppImage --appimage-extract >/dev/null 2>&1
+        sudo mv squashfs-root /opt/orcaslicer
+        sudo ln -sf /opt/orcaslicer/AppRun /usr/local/bin/orca-slicer
 
     - name: Update justfile for Linux paths
       run: |
