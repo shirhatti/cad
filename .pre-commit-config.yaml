@@ -6,7 +6,7 @@ repos:
   - repo: local
     hooks:
       - id: customizer-lint
-        name: OpenSCAD Linter
+        name: MakerBot Customizer Linter
         description: Validate OpenSCAD syntax and MakerBot Customizer compliance
         entry: uv run python -m scripts.customizer_lint
         language: system
