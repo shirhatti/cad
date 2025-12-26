@@ -10,8 +10,7 @@ _ensure-uv:
     if ! command -v uv &> /dev/null; then
         echo "Installing uv..."
         curl -LsSf https://astral.sh/uv/install.sh | sh
-        echo "Please restart your shell or run: source ~/.cargo/env"
-        exit 1
+        export PATH="$HOME/.local/bin:$PATH"
     fi
 
 # Install Python dependencies and pre-commit hooks
