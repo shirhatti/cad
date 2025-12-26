@@ -2,6 +2,44 @@
 default:
     @just --list
 
+# ===== SETUP & DEPENDENCIES =====
+
+# Bootstrap uv (Python package manager)
+_ensure-uv:
+    #!/usr/bin/env bash
+    if ! command -v uv &> /dev/null; then
+        echo "Installing uv..."
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "Please restart your shell or run: source ~/.cargo/env"
+        exit 1
+    fi
+
+# Install Python dependencies and pre-commit hooks
+setup: _ensure-uv
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Syncing Python dependencies..."
+    uv sync
+    echo "Installing pre-commit hooks..."
+    uv run pre-commit install
+    echo "✓ Setup complete!"
+
+# ===== LINTING =====
+
+# Run Customizer linter on all OpenSCAD files
+lint: _ensure-uv
+    uv run python -m scripts.customizer_lint projects/
+
+# Run Customizer linter in strict mode (warnings are errors)
+lint-strict: _ensure-uv
+    uv run python -m scripts.customizer_lint --strict projects/
+
+# Run all pre-commit hooks on all files
+pre-commit: _ensure-uv
+    uv run pre-commit run --all-files
+
+# ===== OPENSCAD =====
+
 # Find OpenSCAD binary (Homebrew install)
 _openscad_app := `brew info --cask openscad --json=v2 2>/dev/null | jq -r '.casks[0].artifacts[] | select(.app?) | .app[0]'`
 _openscad := "/Applications" / _openscad_app

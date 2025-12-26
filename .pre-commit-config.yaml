@@ -1,0 +1,24 @@
+# Pre-commit hooks for CAD project
+# See https://pre-commit.com for more information
+
+repos:
+  # Local hooks
+  - repo: local
+    hooks:
+      - id: customizer-lint
+        name: MakerBot Customizer Linter
+        description: Validate OpenSCAD files comply with MakerBot Customizer spec
+        entry: uv run python -m scripts.customizer_lint
+        language: system
+        files: \.scad$
+        types: [file]
+        pass_filenames: true
+
+      - id: openscad-syntax
+        name: OpenSCAD Syntax Check
+        description: Validate OpenSCAD syntax using openscad CLI (skipped if openscad not available)
+        entry: bash -c 'command -v openscad >/dev/null || exit 0; for f in "$@"; do openscad -o /dev/null "$f" 2>&1 | grep -qE "ERROR|TRACE" && { echo "Syntax error in $f"; exit 1; }; done' --
+        language: system
+        files: \.scad$
+        types: [file]
+        pass_filenames: true
