@@ -41,6 +41,8 @@ jobs:
 
     - name: Update justfile for Linux paths
       run: |
+        # Replace brew backtick expression (evaluated at parse time, fails on Linux)
+        sed -i 's|_openscad_app := .*|_openscad_app := ""|' justfile
         # Update OpenSCAD binary path
         sed -i 's|_openscad_bin := .*|_openscad_bin := "openscad"|' justfile
         # Update OrcaSlicer binary path
