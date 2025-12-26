@@ -51,15 +51,25 @@ jobs:
         sed -i 's|_orca_slicer_bin := .*|_orca_slicer_bin := "orca-slicer"|' justfile
 
     - name: Verify tools
+      env:
+        XDG_SESSION_TYPE: x11
+        GDK_BACKEND: x11
+        QT_QPA_PLATFORM: xcb
       run: |
         just --version
         openscad --version
-        xvfb-run orca-slicer --help | head -5
+        xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" orca-slicer --help | head -5
 
     - name: Run syntax check
-      run: xvfb-run just check
+      env:
+        XDG_SESSION_TYPE: x11
+        GDK_BACKEND: x11
+      run: xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" just check
 
     - name: Render models
+      env:
+        XDG_SESSION_TYPE: x11
+        GDK_BACKEND: x11
       run: |
         mkdir -p artifacts/stl
         find projects -name "*.scad" -type f | while read -r f; do
@@ -67,17 +77,22 @@ jobs:
           basename=$(basename "$f" .scad)
           out="artifacts/stl/${project_name}__${basename}.stl"
           echo "Rendering $f -> $out"
-          xvfb-run openscad -o "$out" "$f"
+          xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" openscad -o "$out" "$f"
         done
 
     - name: Slice models
+      env:
+        # Force X11 backend instead of Wayland for headless operation
+        XDG_SESSION_TYPE: x11
+        GDK_BACKEND: x11
+        QT_QPA_PLATFORM: xcb
       run: |
         find projects -name "*.scad" -type f | while read -r model; do
           project_name=$(dirname "$model" | sed 's|projects/||')
           basename=$(basename "$model" .scad)
           fullname="${project_name}__${basename}"
           echo "Slicing $fullname..."
-          xvfb-run just slice "$fullname"
+          xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" just slice "$fullname"
         done
 
     - name: Upload artifacts
