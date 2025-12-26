@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "openscad": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--with",
+        "git+https://github.com/quellant/openscad-mcp.git",
+        "openscad-mcp"
+      ]
+    }
+  }
+}

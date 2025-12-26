@@ -1,0 +1,3 @@
+[submodule ".orca-slicer"]
+	path = .orca-slicer
+	url = https://github.com/OrcaSlicer/OrcaSlicer.git

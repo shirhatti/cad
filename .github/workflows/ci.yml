@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+        fetch-depth: 1
+
+    - name: Configure git for sparse checkout
+      run: |
+        cd .orca-slicer
+        git sparse-checkout set resources/profiles
+        cd ..
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y openscad xvfb libglu1-mesa wget
+
+    - name: Install just
+      run: |
+        wget -qO- https://github.com/casey/just/releases/download/1.36.0/just-1.36.0-x86_64-unknown-linux-musl.tar.gz | \
+        sudo tar xzf - -C /usr/local/bin just
+
+    - name: Install OrcaSlicer
+      run: |
+        ORCA_VERSION="v2.3.1"
+        wget "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/${ORCA_VERSION}/OrcaSlicer_Linux_${ORCA_VERSION}.AppImage" -O OrcaSlicer.AppImage
+        chmod +x OrcaSlicer.AppImage
+        sudo mv OrcaSlicer.AppImage /usr/local/bin/orca-slicer
+
+    - name: Update justfile for Linux paths
+      run: |
+        # Update OpenSCAD binary path
+        sed -i 's|_openscad_bin := .*|_openscad_bin := "openscad"|' justfile
+        # Update OrcaSlicer binary path
+        sed -i 's|_orca_slicer_bin := .*|_orca_slicer_bin := "orca-slicer"|' justfile
+
+    - name: Verify tools
+      run: |
+        just --version
+        openscad --version
+        xvfb-run orca-slicer --help | head -5
+
+    - name: Run syntax check
+      run: just check
+
+    - name: Render models
+      run: just build
+
+    - name: Slice models
+      run: |
+        find projects -name "*.scad" -type f | while read -r model; do
+          project_name=$(dirname "$model" | sed 's|projects/||')
+          basename=$(basename "$model" .scad)
+          fullname="${project_name}__${basename}"
+          echo "Slicing $fullname..."
+          xvfb-run just slice "$fullname"
+        done
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: build-artifacts
+        path: |
+          artifacts/stl/*.stl
+          artifacts/gcode/*.3mf
+          artifacts/logs/*.log
+        retention-days: 7
+
+    - name: Check for errors
+      run: |
+        if grep -r "error when validate" artifacts/logs/ 2>/dev/null; then
+          echo "❌ Found validation errors in slicing logs"
+          exit 1
+        fi
+        echo "✅ All models rendered and sliced successfully"

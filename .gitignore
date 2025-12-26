@@ -1,0 +1,8 @@
+# Build artifacts
+artifacts/
+
+# macOS
+.DS_Store
+
+# Python
+.python-version
