@@ -31,13 +31,8 @@
             # Image tools (for preview generation)
             imagemagick          # Convert PNG renders to thumbnails
 
-            # Python environment for SVG processing
-            (python3.withPackages (ps: with ps; [
-              # No external dependencies needed - using stdlib only
-            ]))
-
-            # MCP server support
-            uv                   # Python package runner for openscad-mcp
+            # Python toolchain (uv manages Python version + packages)
+            uv                   # Fast Python package manager
 
             # 3D printing slicer
             # Orca Slicer: Install from https://github.com/OrcaSlicer/OrcaSlicer/releases
@@ -74,17 +69,20 @@
             fi
 
             echo ""
-            echo "Commands:"
-            echo "   just gui FILE        - open in OpenSCAD GUI"
-            echo "   just preview FILE    - generate PNG preview"
+            echo "Setup:"
+            echo "   just setup           - install Python deps + pre-commit hooks"
+            echo ""
+            echo "Linting:"
+            echo "   just lint            - check Customizer compliance"
+            echo "   just pre-commit      - run all pre-commit hooks"
+            echo ""
+            echo "OpenSCAD:"
             echo "   just build           - render all to STL"
+            echo "   just gui FILE        - open in OpenSCAD GUI"
             echo "   just watch           - auto-rebuild on changes"
             echo ""
             echo "Print workflow:"
-            echo "   just render FILE     - render .scad to STL"
-            echo "   just slice FILE      - slice STL to 3MF"
-            echo "   just open-slice FILE - open 3MF in Orca Slicer"
-            echo "   just prepare FILE    - render + slice + open (complete workflow)"
+            echo "   just prepare FILE    - render + slice + open"
             export VSCODE_PROFILE="openscad"
           '';
         };
