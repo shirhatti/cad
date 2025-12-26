@@ -9,6 +9,13 @@ Personal CAD projects designed with OpenSCAD and sliced with Orca Slicer.
 Each project is in its own subdirectory under `projects/`:
 
 - [rack-shelf-apple-tv-mount](./projects/rack-shelf-apple-tv-mount/) - Mount for Apple TV on 1U rack shelf
+- [hex-cube](./projects/hex-cube/) - Open cube with hexagonal grid ventilation on all five faces
+
+## Shared Libraries
+
+Reusable OpenSCAD modules are in `lib/`:
+
+- **hex_grid.scad** - Hexagonal grid patterns for ventilation and decorative use
 
 ## Quick Start
 

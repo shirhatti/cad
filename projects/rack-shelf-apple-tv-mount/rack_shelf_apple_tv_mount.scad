@@ -12,6 +12,8 @@
 //   - Height: 31.0mm
 //   - Weight: 208g (Wi-Fi) / 214g (Wi-Fi+Ethernet)
 
+use <../../lib/hex_grid.scad>
+
 $fn = 64;
 
 // ===== SHELF DIMENSIONS =====
@@ -86,19 +88,18 @@ module shelf_clip() {
     }
 }
 
-// Module: Ventilation holes in a grid pattern
+// Module: Ventilation holes in a hexagonal grid pattern
+// Uses shared hex_grid library for better airflow and aesthetics
 module ventilation_grid(width, depth, hole_dia, spacing) {
-    count_x = floor(width / spacing);
-    count_y = floor(depth / spacing);
-    start_x = -(count_x - 1) * spacing / 2;
-    start_y = -(count_y - 1) * spacing / 2;
-
-    for (x = [0 : count_x - 1]) {
-        for (y = [0 : count_y - 1]) {
-            translate([start_x + x * spacing, start_y + y * spacing, -0.1])
-            cylinder(d=hole_dia, h=BASE_THICKNESS + TRAY_HEIGHT + 0.2);
-        }
-    }
+    translate([0, 0, -0.1])
+    hex_grid_3d(
+        width = width,
+        depth = depth,
+        height = BASE_THICKNESS + TRAY_HEIGHT + 0.2,
+        hole_dia = hole_dia,
+        spacing = spacing,
+        center = true
+    );
 }
 
 // Module: Base mounting plate
