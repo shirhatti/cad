@@ -16,7 +16,7 @@ _orca_slicer_bin := "/Applications/OrcaSlicer.app/Contents/MacOS/OrcaSlicer"
 _orca_profiles_upstream := ".orca-slicer/resources/profiles/BBL"
 _orca_profiles_local := ".orca-profiles-local/BBL"
 _orca_machine_profile := _orca_profiles_local / "machine/Bambu Lab A1 0.4 nozzle.json"
-_orca_process_profile := _orca_profiles_upstream / "process/0.20mm Standard @BBL A1.json"
+_orca_process_profile := _orca_profiles_local / "process/0.20mm Standard @BBL A1.json"
 _orca_filament_profile := _orca_profiles_upstream / "filament/Generic PLA @BBL A1.json"
 
 # Helper function to run OpenSCAD quietly (suppress OpenGL warnings)
