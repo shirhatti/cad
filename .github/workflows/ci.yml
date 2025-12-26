@@ -58,7 +58,15 @@ jobs:
       run: xvfb-run just check
 
     - name: Render models
-      run: xvfb-run just build
+      run: |
+        mkdir -p artifacts/stl
+        find projects -name "*.scad" -type f | while read -r f; do
+          project_name=$(dirname "$f" | sed 's|projects/||')
+          basename=$(basename "$f" .scad)
+          out="artifacts/stl/${project_name}__${basename}.stl"
+          echo "Rendering $f -> $out"
+          xvfb-run openscad -o "$out" "$f"
+        done
 
     - name: Slice models
       run: |
