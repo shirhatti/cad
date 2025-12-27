@@ -53,7 +53,7 @@ jobs:
     - name: Install OrcaSlicer
       run: |
         ORCA_VERSION=$(curl -s https://api.github.com/repos/OrcaSlicer/OrcaSlicer/releases/latest | jq -r .tag_name | sed 's/^v//')
-        wget "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v${ORCA_VERSION}/OrcaSlicer_Linux_Ubuntu2404_V${ORCA_VERSION}.AppImage" -O OrcaSlicer.AppImage
+        wget "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v${ORCA_VERSION}/OrcaSlicer_Linux_AppImage_Ubuntu2404_V${ORCA_VERSION}.AppImage" -O OrcaSlicer.AppImage
         chmod +x OrcaSlicer.AppImage
         ./OrcaSlicer.AppImage --appimage-extract >/dev/null 2>&1
         sudo rm -rf /opt/orcaslicer
