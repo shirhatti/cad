@@ -25,8 +25,8 @@ bracket_width = 123; // [100:1:150]
 bracket_depth = 123; // [100:1:150]
 // Top plate thickness
 top_plate_thickness = 3; // [2:0.5:5]
-// Side wall height (lip bottom at device height: 31 + lip_thickness 3 = 34)
-side_wall_height = 34; // [30:1:60]
+// Side wall height (matches device height, lip overlaps top of device)
+side_wall_height = 31; // [30:1:60]
 // Side wall thickness
 wall_thickness = 10; // [5:1:15]
 
@@ -40,7 +40,7 @@ cutout_depth = 93; // [50:1:100]
 // How far the lip extends inward over the device
 lip_overhang = 4; // [2:1:10]
 // Thickness of the lip (hangs down from top plate)
-lip_thickness = 3; // [2:1:6]
+lip_thickness = 6; // [2:1:10]
 // Corner radius for squircle shape
 corner_radius = 10; // [5:1:20]
 
