@@ -169,16 +169,26 @@ build:
 # Render a specific file to STL
 render file:
     #!/usr/bin/env bash
-    mkdir -p artifacts/stl
+    set -euo pipefail
     # Strip .scad extension if provided
     basename="{{file}}"
     basename="${basename%.scad}"
+    # Create output directory (preserve input directory structure)
+    output_dir="artifacts/stl/$(dirname "${basename}")"
+    mkdir -p "$output_dir"
     timestamp=$(date +%Y%m%d_%H%M%S)
+    output_base="$(basename "${basename}")"
+    output_file="$output_dir/${output_base}_${timestamp}.stl"
     echo "Rendering ${basename}.scad..."
-    {{_openscad_bin}} -o "artifacts/stl/${basename}_${timestamp}.stl" "${basename}.scad"
-    # Also create a symlink without timestamp for easy reference
-    ln -sf "${basename}_${timestamp}.stl" "artifacts/stl/${basename}.stl"
-    echo "✓ Rendered to: artifacts/stl/${basename}.stl"
+    {{_openscad_bin}} -o "$output_file" "${basename}.scad"
+    # Only create symlink if render succeeded and file exists
+    if [ -f "$output_file" ]; then
+        ln -sf "${output_base}_${timestamp}.stl" "$output_dir/${output_base}.stl"
+        echo "✓ Rendered to: $output_dir/${output_base}.stl"
+    else
+        echo "✗ Render failed - output file not created"
+        exit 1
+    fi
 
 # Watch for changes and auto-rebuild all files
 watch:
@@ -251,15 +261,26 @@ check:
 # Export high-quality render (slower, better quality)
 render-hq file:
     #!/usr/bin/env bash
+    set -euo pipefail
     openscad() { {{_openscad_bin}} "$@" 2>/dev/null; }
-    mkdir -p artifacts/stl
     # Strip .scad extension if provided
     basename="{{file}}"
     basename="${basename%.scad}"
+    # Create output directory (preserve input directory structure)
+    output_dir="artifacts/stl/$(dirname "${basename}")"
+    mkdir -p "$output_dir"
     timestamp=$(date +%Y%m%d_%H%M%S)
-    openscad -o "artifacts/stl/${basename}_${timestamp}.stl" --render "${basename}.scad"
-    # Also create a symlink without timestamp for easy reference
-    ln -sf "${basename}_${timestamp}.stl" "artifacts/stl/${basename}.stl"
+    output_base="$(basename "${basename}")"
+    output_file="$output_dir/${output_base}_${timestamp}.stl"
+    openscad -o "$output_file" --render "${basename}.scad"
+    # Only create symlink if render succeeded and file exists
+    if [ -f "$output_file" ]; then
+        ln -sf "${output_base}_${timestamp}.stl" "$output_dir/${output_base}.stl"
+        echo "✓ Rendered to: $output_dir/${output_base}.stl"
+    else
+        echo "✗ Render failed - output file not created"
+        exit 1
+    fi
 
 # Slice an STL file to 3MF using Orca Slicer (Bambu A1)
 slice file:
