@@ -80,11 +80,7 @@ module top_plate() {
 
 // Threaded insert boss with hole for heat-set insert
 // Boss sits flush with wall bottom at Z=0, extends upward
-// Includes counterbore step to clearly indicate insert location
 module insert_boss() {
-    counterbore_depth = 2; // Depth of visual step
-    counterbore_diameter = boss_diameter - 2; // Visible step around hole
-
     difference() {
         // Cylindrical boss - from shelf level (Z=0) up into wall structure
         cylinder(d = boss_diameter, h = boss_height);
@@ -92,10 +88,14 @@ module insert_boss() {
         // Insert hole (from bottom at Z=0, for screw from below shelf)
         translate([0, 0, -0.5])
             cylinder(d = insert_hole_diameter, h = insert_hole_depth + 0.5);
-
-        // Counterbore step at bottom (Z=0) to clearly indicate insert location
-        cylinder(d = counterbore_diameter, h = counterbore_depth);
     }
+}
+
+// Counterbore cut - applied after boss and flange are combined
+module counterbore_cut() {
+    counterbore_depth = 5; // Deep step for visibility
+    counterbore_diameter = boss_diameter - 2; // 10mm step around 5.6mm hole
+    cylinder(d = counterbore_diameter, h = counterbore_depth);
 }
 
 // Flange to support insert boss extending OUTWARD (away from device)
@@ -127,29 +127,38 @@ module side_wall(is_left) {
     wall_frame_top = 8; // Solid material at top of wall (connects to top plate)
     wall_frame_bottom = 10; // Solid material at bottom (structural + boss support)
 
-    union() {
-        // Hollowed wall body - frame with cutout in middle
-        difference() {
-            cube([wall_thickness, bracket_depth, side_wall_height]);
+    // Apply counterbore cuts AFTER combining boss and flange geometry
+    difference() {
+        union() {
+            // Hollowed wall body - frame with cutout in middle
+            difference() {
+                cube([wall_thickness, bracket_depth, side_wall_height]);
 
-            // Cutout in middle of wall (leave frame around edges)
-            translate([-0.5,
-                       wall_frame_width,
-                       wall_frame_bottom])
-                cube([wall_thickness + 1,
-                      bracket_depth - 2 * wall_frame_width,
-                      side_wall_height - wall_frame_bottom - wall_frame_top]);
+                // Cutout in middle of wall (leave frame around edges)
+                translate([-0.5,
+                           wall_frame_width,
+                           wall_frame_bottom])
+                    cube([wall_thickness + 1,
+                          bracket_depth - 2 * wall_frame_width,
+                          side_wall_height - wall_frame_bottom - wall_frame_top]);
+            }
+
+            // Front flange and insert boss (extending OUTWARD, flush with wall bottom)
+            boss_flange(front_insert_offset, is_left);
+            translate([boss_x, front_insert_offset, 0])
+                insert_boss();
+
+            // Back flange and insert boss (extending OUTWARD, flush with wall bottom)
+            boss_flange(bracket_depth - back_insert_offset, is_left);
+            translate([boss_x, bracket_depth - back_insert_offset, 0])
+                insert_boss();
         }
 
-        // Front flange and insert boss (extending OUTWARD, flush with wall bottom)
-        boss_flange(front_insert_offset, is_left);
-        translate([boss_x, front_insert_offset, 0])
-            insert_boss();
-
-        // Back flange and insert boss (extending OUTWARD, flush with wall bottom)
-        boss_flange(bracket_depth - back_insert_offset, is_left);
-        translate([boss_x, bracket_depth - back_insert_offset, 0])
-            insert_boss();
+        // Counterbore cuts at boss locations (cut from combined geometry)
+        translate([boss_x, front_insert_offset, -0.1])
+            counterbore_cut();
+        translate([boss_x, bracket_depth - back_insert_offset, -0.1])
+            counterbore_cut();
     }
 }
 
