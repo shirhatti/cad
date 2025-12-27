@@ -93,7 +93,7 @@ module insert_boss() {
 
 // Counterbore cut - applied after boss and flange are combined
 module counterbore_cut() {
-    counterbore_depth = 5; // Deep step for visibility
+    counterbore_depth = 1; // Subtle step to indicate insert location
     counterbore_diameter = boss_diameter - 2; // 10mm step around 5.6mm hole
     cylinder(d = counterbore_diameter, h = counterbore_depth);
 }
