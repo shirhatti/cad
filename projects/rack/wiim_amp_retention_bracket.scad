@@ -53,6 +53,8 @@ insert_hole_depth = 8; // [6:1:12]
 front_insert_offset = 20; // [10:1:40]
 // Back insert distance from back edge (center of boss)
 back_insert_offset = 12; // [10:1:40]
+// Boss overhang from wall (for slot alignment: 6.5mm gives 213mm = 6 × 35.5mm spacing)
+boss_overhang = 6.5; // [0:0.5:15]
 
 /* [Rendering] */
 $fa = 1;
@@ -93,21 +95,57 @@ module insert_boss() {
     }
 }
 
-// Side wall with insert bosses at front and back corners
-module side_wall() {
+// Flange to support overhanging insert boss
+module boss_flange(y_pos, overhang_dir) {
+    // overhang_dir: -1 for left wall (extends left), +1 for right wall (extends right)
+    boss_embed = 5;
+    flange_height = boss_embed; // Flange at base of wall
+    flange_width = boss_overhang + boss_diameter / 2; // Extends to support boss center
+
+    // Flange extends from wall base outward
+    translate([overhang_dir > 0 ? wall_thickness : -flange_width,
+               y_pos - boss_diameter / 2,
+               0])
+        cube([flange_width, boss_diameter, flange_height]);
+}
+
+// Side wall with insert bosses on overhanging flanges at front and back corners
+// is_left: true for left wall (bosses overhang left), false for right wall (overhang right)
+module side_wall(is_left) {
     // Wall is oriented along Y axis (front to back)
     boss_embed = 5; // Must match value in insert_boss()
+    overhang_dir = is_left ? -1 : 1;
+
+    // X position for boss center (overhangs outward from wall)
+    boss_x = is_left ? (wall_thickness / 2 - boss_overhang) : (wall_thickness / 2 + boss_overhang);
+
+    // Wall hollowing parameters
+    wall_frame_width = 25; // Solid material at front and back of wall
+    wall_frame_top = 8; // Solid material at top of wall (connects to top plate)
+    wall_frame_bottom = 10; // Solid material at bottom (structural + boss support)
 
     union() {
-        // Main wall body
-        cube([wall_thickness, bracket_depth, side_wall_height]);
+        // Hollowed wall body - frame with cutout in middle
+        difference() {
+            cube([wall_thickness, bracket_depth, side_wall_height]);
 
-        // Front insert boss - centered in wall thickness, embedded into wall base
-        translate([wall_thickness / 2, front_insert_offset, -boss_height])
+            // Cutout in middle of wall (leave frame around edges)
+            translate([-0.5,
+                       wall_frame_width,
+                       wall_frame_bottom])
+                cube([wall_thickness + 1,
+                      bracket_depth - 2 * wall_frame_width,
+                      side_wall_height - wall_frame_bottom - wall_frame_top]);
+        }
+
+        // Front flange and insert boss
+        boss_flange(front_insert_offset, overhang_dir);
+        translate([boss_x, front_insert_offset, -boss_height])
             insert_boss();
 
-        // Back insert boss - centered in wall thickness, embedded into wall base
-        translate([wall_thickness / 2, bracket_depth - back_insert_offset, -boss_height])
+        // Back flange and insert boss
+        boss_flange(bracket_depth - back_insert_offset, overhang_dir);
+        translate([boss_x, bracket_depth - back_insert_offset, -boss_height])
             insert_boss();
     }
 }
@@ -118,13 +156,13 @@ module bracket() {
     translate([0, 0, side_wall_height])
         top_plate();
 
-    // Left side wall (at X = 0)
+    // Left side wall (at X = 0, bosses overhang to the left)
     translate([0, 0, 0])
-        side_wall();
+        side_wall(is_left = true);
 
-    // Right side wall (at X = bracket_width - wall_thickness)
+    // Right side wall (at X = bracket_width - wall_thickness, bosses overhang to the right)
     translate([bracket_width - wall_thickness, 0, 0])
-        side_wall();
+        side_wall(is_left = false);
 }
 
 // Main model
