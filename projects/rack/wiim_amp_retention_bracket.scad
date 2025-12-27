@@ -1,14 +1,14 @@
 // WiiM Amp Retention Bracket for 1U Vented Rack Shelf
 //
-// A top-down retention bracket that secures a WiiM Amp to a vented rack shelf
-// by clamping over the device and anchoring through the shelf's ventilation slots.
-// Uses no adhesive and requires no mounting holes on the device itself.
+// A top-down retention bracket that secures a WiiM Amp to a vented rack shelf.
+// Side walls connect via a top plate with ventilation cutout.
 // Front and back are completely open for port and cable access.
-// The top plate connects both side walls into a single rigid piece.
+// Bracket attaches using M4/M5 screws from below the shelf, threading into
+// heat-set inserts embedded in the bracket's insert bosses.
 //
 // PRINT ORIENTATION: Print upside-down (top plate on build plate) for best results.
 // Rotate 180° around X axis in your slicer before printing.
-// No supports needed. Use 3+ perimeters on tabs and walls for rigidity.
+// No supports needed. Use 3+ perimeters for insert boss strength.
 
 /* [Device Dimensions] */
 // Width of the WiiM Amp
@@ -36,23 +36,30 @@ cutout_width = 170; // [100:1:250]
 // Depth of center ventilation cutout
 cutout_depth = 190; // [100:1:250]
 
-/* [Anchor Tabs] */
-// Length of anchor tab (extends toward front/back)
-tab_length = 25; // [15:1:40]
-// Width of anchor tab
-tab_width = 8; // [5:1:15]
-// Thickness of anchor tab
-tab_thickness = 3; // [2:0.5:5]
-// Barb height for snap-fit
-barb_height = 1.5; // [0.5:0.25:3]
-// Barb length
-barb_length = 5; // [3:0.5:10]
-// Tab inset from front/back edges
-tab_inset = 15; // [5:1:30]
+/* [Threaded Insert Bosses] */
+// Insert size: M4 or M5
+insert_size = "M4"; // [M4, M5]
+// Boss outer diameter
+boss_diameter = 12; // [10:1:20]
+// Boss height (extends below wall bottom)
+boss_height = 10; // [8:1:15]
+// M4 insert hole diameter (typical for heat-set inserts)
+m4_hole_diameter = 5.6; // [5.0:0.1:6.0]
+// M5 insert hole diameter (typical for heat-set inserts)
+m5_hole_diameter = 6.4; // [6.0:0.1:7.0]
+// Insert hole depth
+insert_hole_depth = 8; // [6:1:12]
+// Front insert distance from front edge (center of boss)
+front_insert_offset = 20; // [10:1:40]
+// Back insert distance from back edge (center of boss)
+back_insert_offset = 12; // [10:1:40]
 
 /* [Rendering] */
 $fa = 1;
-$fn = 32;
+$fn = 64;
+
+// Calculate insert hole diameter based on selected size
+insert_hole_diameter = (insert_size == "M5") ? m5_hole_diameter : m4_hole_diameter;
 
 // Top plate with center ventilation cutout
 // Creates a rectangular frame with left/right rails and front/back crossbars
@@ -69,42 +76,32 @@ module top_plate() {
     }
 }
 
-// Anchor tab with snap-fit barb
-// Tab extends in +Y direction, barb on bottom
-module anchor_tab() {
-    union() {
-        // Main tab body
-        cube([tab_width, tab_length, tab_thickness]);
+// Threaded insert boss with hole for heat-set insert
+module insert_boss() {
+    difference() {
+        // Cylindrical boss
+        cylinder(d = boss_diameter, h = boss_height);
 
-        // Snap-fit barb on underside at the end of tab
-        translate([(tab_width - barb_length) / 2,
-                   tab_length - barb_length - 1,
-                   -barb_height])
-            cube([barb_length, barb_length, barb_height]);
+        // Insert hole (from bottom, doesn't go all the way through)
+        translate([0, 0, -0.5])
+            cylinder(d = insert_hole_diameter, h = insert_hole_depth + 0.5);
     }
 }
 
-// Side wall with anchor tabs at front and back corners
-// is_left: true for left wall (tabs extend toward front/back)
-module side_wall(is_left) {
+// Side wall with insert bosses at front and back corners
+module side_wall() {
     // Wall is oriented along Y axis (front to back)
     union() {
         // Main wall body
         cube([wall_thickness, bracket_depth, side_wall_height]);
 
-        // Front tab - extends toward front (negative Y direction)
-        // Position: at front edge of wall, extends outward
-        translate([is_left ? wall_thickness - tab_width : 0,
-                   -tab_length + tab_inset,
-                   -tab_thickness])
-            anchor_tab();
+        // Front insert boss - centered in wall thickness
+        translate([wall_thickness / 2, front_insert_offset, -boss_height])
+            insert_boss();
 
-        // Back tab - extends toward back (positive Y direction)
-        // Position: at back edge of wall, extends outward
-        translate([is_left ? wall_thickness - tab_width : 0,
-                   bracket_depth - tab_inset,
-                   -tab_thickness])
-            anchor_tab();
+        // Back insert boss - centered in wall thickness
+        translate([wall_thickness / 2, bracket_depth - back_insert_offset, -boss_height])
+            insert_boss();
     }
 }
 
@@ -116,14 +113,14 @@ module bracket() {
 
     // Left side wall (at X = 0)
     translate([0, 0, 0])
-        side_wall(true);
+        side_wall();
 
     // Right side wall (at X = bracket_width - wall_thickness)
     translate([bracket_width - wall_thickness, 0, 0])
-        side_wall(false);
+        side_wall();
 }
 
 // Main model
-// Translate so bottom of tabs (including barbs) is at Z = 0
-translate([0, 0, tab_thickness + barb_height])
+// Position so bottom of insert bosses is at Z = 0
+translate([0, 0, boss_height])
     bracket();
