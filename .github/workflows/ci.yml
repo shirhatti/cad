@@ -112,6 +112,7 @@ jobs:
         done
 
     - name: Slice models (with GHCR caching)
+      continue-on-error: true
       env:
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
@@ -119,12 +120,11 @@ jobs:
         find projects -name "*.scad" -type f \
           ! -name "*_test.scad" \
           ! -name "*_constants.scad" \
-          ! -name "*_reference.scad" \
-          ! -name "wiim_amp_retention_bracket.scad" | while read -r model; do
+          ! -name "*_reference.scad" | while read -r model; do
           project_name=$(dirname "$model" | sed 's|projects/||')
           basename=$(basename "$model" .scad)
           fullname="${project_name}__${basename}"
-          scripts/cached_slice.sh "$fullname" artifacts
+          scripts/cached_slice.sh "$fullname" artifacts || echo "Warning: Failed to slice $fullname"
         done
 
     - name: Upload STL models
