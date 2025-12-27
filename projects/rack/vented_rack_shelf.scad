@@ -31,10 +31,9 @@ slot_spacing_x = 20; // [15:1:30]
 // Y-axis spacing between row centers
 slot_spacing_y = 53; // [40:1:100]
 
-/* [Rendering] */
+/* [Hidden] */
 $fa = 2;
 $fn = 32;
-// Shelf color (steel gray)
 shelf_color = [0.7, 0.7, 0.72];
 
 // Single ventilation slot (rounded rectangle, oriented along Y-axis)
