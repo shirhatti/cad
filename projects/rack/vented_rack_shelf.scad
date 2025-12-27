@@ -3,7 +3,7 @@
 //
 // Based on typical 1U vented rack shelf specifications:
 // - Usable shelf area: 438mm × 252mm
-// - Slot pattern: 20mm long × 6mm wide slots
+// - Slot pattern: 20mm long × 6mm wide slots (oriented along Y-axis/short edge)
 // - Slot spacing: 20mm center-to-center (X-axis), 35.5mm row spacing (Y-axis)
 // - Material: SPCC steel, ~1mm thick
 
@@ -35,14 +35,14 @@ $fn = 32;
 // Shelf color (steel gray)
 shelf_color = [0.7, 0.7, 0.72];
 
-// Single ventilation slot (rounded rectangle)
+// Single ventilation slot (rounded rectangle, oriented along Y-axis)
 module vent_slot() {
     hull() {
-        // Left semicircle
-        translate([slot_radius, slot_width/2, 0])
+        // Bottom semicircle
+        translate([slot_width/2, slot_radius, 0])
             cylinder(r = slot_radius, h = shelf_thickness + 1);
-        // Right semicircle
-        translate([slot_length - slot_radius, slot_width/2, 0])
+        // Top semicircle
+        translate([slot_width/2, slot_length - slot_radius, 0])
             cylinder(r = slot_radius, h = shelf_thickness + 1);
     }
 }
@@ -53,9 +53,9 @@ module vented_shelf() {
     slots_x = floor((shelf_width - 2 * edge_margin) / slot_spacing_x);
     slots_y = floor((shelf_depth - 2 * edge_margin) / slot_spacing_y);
 
-    // Center the slot pattern
-    start_x = (shelf_width - (slots_x - 1) * slot_spacing_x) / 2 - slot_length / 2;
-    start_y = (shelf_depth - (slots_y - 1) * slot_spacing_y) / 2 - slot_width / 2;
+    // Center the slot pattern (slots oriented along Y-axis)
+    start_x = (shelf_width - (slots_x - 1) * slot_spacing_x) / 2 - slot_width / 2;
+    start_y = (shelf_depth - (slots_y - 1) * slot_spacing_y) / 2 - slot_length / 2;
 
     color(shelf_color)
     difference() {
