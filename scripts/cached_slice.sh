@@ -97,14 +97,17 @@ if [[ "${SKIP_CACHE:-0}" != "1" ]] && [[ -f "$OUTPUT_FILE" ]]; then
     cp "$OUTPUT_FILE" "${PUSH_DIR}/${MODEL_NAME}.3mf"
     cp "$LOG_FILE" "${PUSH_DIR}/${MODEL_NAME}.log" 2>/dev/null || touch "${PUSH_DIR}/${MODEL_NAME}.log"
 
-    if oras push "$OCI_REF" \
-        --artifact-type application/vnd.orcaslicer.slice \
-        "${PUSH_DIR}/${MODEL_NAME}.3mf:application/vnd.ms-package.3dmanufacturing-3dmodel+xml" \
-        "${PUSH_DIR}/${MODEL_NAME}.log:text/plain"; then
-        echo "✓ Cached slice for ${MODEL_NAME}"
-    else
-        echo "⚠ Failed to cache slice for ${MODEL_NAME} to ${OCI_REF} (continuing anyway)"
-    fi
+    (
+        cd "$PUSH_DIR"
+        if oras push "$OCI_REF" \
+            --artifact-type application/vnd.orcaslicer.slice \
+            "${MODEL_NAME}.3mf:application/vnd.ms-package.3dmanufacturing-3dmodel+xml" \
+            "${MODEL_NAME}.log:text/plain"; then
+            echo "✓ Cached slice for ${MODEL_NAME}"
+        else
+            echo "⚠ Failed to cache slice for ${MODEL_NAME} to ${OCI_REF} (continuing anyway)"
+        fi
+    )
 
     rm -rf "$PUSH_DIR"
 fi

@@ -93,14 +93,17 @@ if [[ "${SKIP_CACHE:-0}" != "1" ]]; then
     cp "$STL_FILE" "${PUSH_DIR}/${FULLNAME}.stl"
     cp "$PNG_FILE" "${PUSH_DIR}/${FULLNAME}.png"
 
-    if oras push "$OCI_REF" \
-        --artifact-type application/vnd.openscad.render \
-        "${PUSH_DIR}/${FULLNAME}.stl:application/sla" \
-        "${PUSH_DIR}/${FULLNAME}.png:image/png"; then
-        echo "✓ Cached ${FULLNAME}"
-    else
-        echo "⚠ Failed to cache ${FULLNAME} to ${OCI_REF} (continuing anyway)"
-    fi
+    (
+        cd "$PUSH_DIR"
+        if oras push "$OCI_REF" \
+            --artifact-type application/vnd.openscad.render \
+            "${FULLNAME}.stl:application/sla" \
+            "${FULLNAME}.png:image/png"; then
+            echo "✓ Cached ${FULLNAME}"
+        else
+            echo "⚠ Failed to cache ${FULLNAME} to ${OCI_REF} (continuing anyway)"
+        fi
+    )
 
     rm -rf "$PUSH_DIR"
 fi
