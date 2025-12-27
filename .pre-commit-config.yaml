@@ -13,3 +13,11 @@ repos:
         files: \.scad$
         types: [file]
         pass_filenames: true
+
+      - id: openscad-tests
+        name: OpenSCAD Unit Tests
+        description: Run OpenSCAD unit tests (*_test.scad files)
+        entry: bash -c 'just test'
+        language: system
+        files: \.scad$
+        pass_filenames: false

@@ -1,8 +1,8 @@
-// WiiM Amp Retention Bracket for 1U Vented Rack Shelf
+// Apple TV Retention Bracket for 1U Vented Rack Shelf
 //
-// A top-down retention bracket that secures a WiiM Amp to a vented rack shelf.
+// A top-down retention bracket that secures an Apple TV 4K to a vented rack shelf.
 // Side walls connect via a top plate with ventilation cutout.
-// Front and back are completely open for port and cable access.
+// Front and back are completely open for cable access and airflow.
 // Bracket attaches using M4/M5 screws from below the shelf, threading into
 // heat-set inserts embedded in the bracket's insert bosses.
 //
@@ -11,38 +11,38 @@
 // No supports needed. Use 3+ perimeters for insert boss strength.
 
 /* [Device Dimensions] */
-// Width of the WiiM Amp
-device_width = 190; // [100:1:300]
-// Depth of the WiiM Amp
-device_depth = 190; // [100:1:300]
-// Height of the WiiM Amp
-device_height = 63; // [20:1:100]
+// Width of the Apple TV 4K
+device_width = 93; // [80:1:120]
+// Depth of the Apple TV 4K
+device_depth = 93; // [80:1:120]
+// Height of the Apple TV 4K
+device_height = 31; // [20:1:50]
 
 /* [Bracket Dimensions] */
 // Overall bracket width (device + clearance + 2×lip_overhang + 2×wall_thickness)
-bracket_width = 222; // [150:1:350]
+bracket_width = 123; // [100:1:150]
 // Overall bracket depth
-bracket_depth = 222; // [150:1:350]
+bracket_depth = 123; // [100:1:150]
 // Top plate thickness
 top_plate_thickness = 3; // [2:0.5:5]
 // Side wall height (matches device height, lip overlaps top of device)
-side_wall_height = 63; // [30:1:100]
-// Side wall thickness (same as frame border for strength)
-wall_thickness = 10; // [5:1:20]
+side_wall_height = 31; // [30:1:60]
+// Side wall thickness
+wall_thickness = 10; // [5:1:15]
 
 /* [Ventilation Cutout] */
 // Width of center ventilation cutout
-cutout_width = 170; // [100:1:250]
+cutout_width = 73; // [50:1:100]
 // Depth of center ventilation cutout
-cutout_depth = 190; // [100:1:250]
+cutout_depth = 93; // [50:1:100]
 
 /* [Retention Lip] */
 // How far the lip extends inward over the device
-lip_overhang = 5; // [3:1:15]
+lip_overhang = 4; // [2:1:10]
 // Thickness of the lip (hangs down from top plate)
 lip_thickness = 6; // [2:1:10]
 // Corner radius for squircle shape
-corner_radius = 15; // [5:1:30]
+corner_radius = 10; // [5:1:20]
 
 /* [Threaded Insert Bosses] */
 // Insert size: M4 or M5
@@ -58,11 +58,11 @@ m5_hole_diameter = 6.4; // [6.0:0.1:7.0]
 // Insert hole depth
 insert_hole_depth = 8; // [6:1:12]
 // Front insert distance from front edge (center of boss)
-front_insert_offset = 20; // [10:1:40]
+front_insert_offset = 15; // [10:1:30]
 // Back insert distance from back edge (center of boss)
-back_insert_offset = 12; // [10:1:40]
-// Boss overhang from wall OUTWARD (for slot alignment: 9mm gives 240mm = 12 × 20mm spacing)
-boss_overhang = 9; // [0:0.5:15]
+back_insert_offset = 15; // [10:1:30]
+// Boss overhang from wall OUTWARD (for slot alignment: 8.5mm gives 140mm = 7 × 20mm spacing)
+boss_overhang = 8.5; // [0:0.5:20]
 
 /* [Rendering] */
 $fa = 1;
@@ -127,7 +127,7 @@ module insert_boss() {
 // Counterbore cut - applied after boss and flange are combined
 module counterbore_cut() {
     counterbore_depth = 1; // Subtle step to indicate insert location
-    counterbore_diameter = boss_diameter - 2; // 10mm step around 5.6mm hole
+    counterbore_diameter = boss_diameter - 2; // Step around insert hole
     cylinder(d = counterbore_diameter, h = counterbore_depth);
 }
 
@@ -138,7 +138,7 @@ module boss_flange(y_pos, is_left) {
     flange_width = boss_overhang + boss_diameter / 2; // Extends to support boss center
 
     // Flange extends from wall OUTWARD (away from device)
-    // Full height from Z=0 (shelf) to wall_frame_bottom (where solid wall starts)
+    // Full height from Z=0 (shelf) to side_wall_height
     // Left wall: flange goes left (negative X)
     // Right wall: flange goes right (positive X from wall outer edge)
     translate([is_left ? -flange_width : wall_thickness,
@@ -156,8 +156,8 @@ module side_wall(is_left) {
     boss_x = is_left ? (-boss_overhang) : (wall_thickness + boss_overhang);
 
     // Wall hollowing parameters
-    wall_frame_width = 25; // Solid material at front and back of wall
-    wall_frame_top = 8; // Solid material at top of wall (connects to top plate)
+    wall_frame_width = 20; // Solid material at front and back of wall
+    wall_frame_top = 6; // Solid material at top of wall (connects to top plate)
     wall_frame_bottom = 10; // Solid material at bottom (structural + boss support)
 
     // Apply counterbore cuts AFTER combining boss and flange geometry

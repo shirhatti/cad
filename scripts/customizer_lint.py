@@ -397,11 +397,22 @@ def lint_file(filepath: Path) -> LintResult:
 
 
 def lint_directory(dirpath: Path, recursive: bool = True) -> list[LintResult]:
-    """Lint all OpenSCAD files in a directory."""
+    """Lint all OpenSCAD files in a directory.
+
+    Excludes files matching these patterns (not meant for Customizer):
+    - *_test.scad (unit test files)
+    - *_constants.scad (shared constants/library files)
+    - *_reference.scad (visualization/reference models, not for printing)
+    """
     results = []
+
+    # Patterns for non-customizable files
+    exclude_suffixes = ("_test.scad", "_constants.scad", "_reference.scad")
 
     pattern = "**/*.scad" if recursive else "*.scad"
     for scad_file in sorted(dirpath.glob(pattern)):
+        if scad_file.name.endswith(exclude_suffixes):
+            continue
         results.append(lint_file(scad_file))
 
     return results

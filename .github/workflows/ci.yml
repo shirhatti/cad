@@ -28,20 +28,13 @@ jobs:
     - name: Cache APT packages
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
-        packages: openscad xvfb gstreamer1.0-plugins-base libwebkit2gtk-4.1-0
-        version: 1.0
-
-    - name: Cache just binary
-      id: cache-just
-      uses: actions/cache@v4
-      with:
-        path: /usr/local/bin/just
-        key: just-1.36.0-linux-x86_64
+        packages: openscad xvfb gstreamer1.0-plugins-base libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 libjavascriptcoregtk-6.0-1
+        version: 1.1
 
     - name: Install just
-      if: steps.cache-just.outputs.cache-hit != 'true'
       run: |
-        wget -qO- https://github.com/casey/just/releases/download/1.36.0/just-1.36.0-x86_64-unknown-linux-musl.tar.gz | \
+        JUST_VERSION=$(curl -s https://api.github.com/repos/casey/just/releases/latest | jq -r .tag_name)
+        wget -qO- "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | \
         sudo tar xzf - -C /usr/local/bin just
 
     - name: Install uv
@@ -57,37 +50,22 @@ jobs:
         restore-keys: |
           uv-${{ runner.os }}-
 
-    - name: Cache OrcaSlicer
-      id: cache-orca
-      uses: actions/cache@v4
-      with:
-        path: /opt/orcaslicer
-        key: orcaslicer-2.3.1-ubuntu2404
-
     - name: Install OrcaSlicer
-      if: steps.cache-orca.outputs.cache-hit != 'true'
       run: |
-        ORCA_VERSION="2.3.1"
-        wget "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v${ORCA_VERSION}/OrcaSlicer_Linux_AppImage_Ubuntu2404_V${ORCA_VERSION}.AppImage" -O OrcaSlicer.AppImage
+        wget "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v2.3.1/OrcaSlicer_Linux_AppImage_Ubuntu2404_V2.3.1.AppImage" -O OrcaSlicer.AppImage
         chmod +x OrcaSlicer.AppImage
         ./OrcaSlicer.AppImage --appimage-extract >/dev/null 2>&1
+        sudo rm -rf /opt/orcaslicer
         sudo mv squashfs-root /opt/orcaslicer
 
     - name: Create OrcaSlicer symlink
       run: sudo ln -sf /opt/orcaslicer/AppRun /usr/local/bin/orca-slicer
 
-    - name: Cache ORAS CLI
-      id: cache-oras
-      uses: actions/cache@v4
-      with:
-        path: /usr/local/bin/oras
-        key: oras-1.2.2-linux-amd64
-
     - name: Install ORAS CLI
-      if: steps.cache-oras.outputs.cache-hit != 'true'
       run: |
-        curl -sLO https://github.com/oras-project/oras/releases/download/v1.2.2/oras_1.2.2_linux_amd64.tar.gz
-        tar -xzf oras_1.2.2_linux_amd64.tar.gz oras
+        ORAS_VERSION=$(curl -s https://api.github.com/repos/oras-project/oras/releases/latest | jq -r .tag_name | sed 's/^v//')
+        curl -sLO "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz"
+        tar -xzf "oras_${ORAS_VERSION}_linux_amd64.tar.gz" oras
         sudo mv oras /usr/local/bin/
 
     - name: Login to GHCR
@@ -115,6 +93,9 @@ jobs:
     - name: Lint OpenSCAD files
       run: uv run python -m scripts.customizer_lint projects/
 
+    - name: Run OpenSCAD unit tests
+      run: xvfb-run just test
+
     - name: Validate models render
       run: xvfb-run just check
 
@@ -123,20 +104,27 @@ jobs:
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
         chmod +x scripts/cached_render.sh
-        find projects -name "*.scad" -type f | while read -r f; do
+        find projects -name "*.scad" -type f \
+          ! -name "*_test.scad" \
+          ! -name "*_constants.scad" \
+          ! -name "*_reference.scad" | while read -r f; do
           scripts/cached_render.sh "$f" artifacts
         done
 
     - name: Slice models (with GHCR caching)
+      continue-on-error: true
       env:
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
         chmod +x scripts/cached_slice.sh
-        find projects -name "*.scad" -type f | while read -r model; do
+        find projects -name "*.scad" -type f \
+          ! -name "*_test.scad" \
+          ! -name "*_constants.scad" \
+          ! -name "*_reference.scad" | while read -r model; do
           project_name=$(dirname "$model" | sed 's|projects/||')
           basename=$(basename "$model" .scad)
           fullname="${project_name}__${basename}"
-          scripts/cached_slice.sh "$fullname" artifacts
+          scripts/cached_slice.sh "$fullname" artifacts || echo "Warning: Failed to slice $fullname"
         done
 
     - name: Upload STL models

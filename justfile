@@ -37,6 +37,93 @@ lint-strict: _ensure-uv
 pre-commit: _ensure-uv
     uv run pre-commit run --all-files
 
+# ===== TESTING =====
+
+# Run all OpenSCAD unit tests (*_test.scad files)
+test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    openscad_bin="{{_openscad_bin}}"
+    failed=0
+    count=0
+
+    # Find all test files in projects/
+    while IFS= read -r -d '' test_file; do
+        count=$((count + 1))
+        echo "Running: $test_file"
+        if output=$("$openscad_bin" --hardwarnings --export-format csg -o /dev/null "$test_file" 2>&1); then
+            # Check for PASS messages and any assertion failures in output
+            if echo "$output" | grep -q "FAIL:"; then
+                echo "  ✗ FAILED (assertion)"
+                echo "$output" | grep "FAIL:" | sed 's/^/    /'
+                failed=$((failed + 1))
+            else
+                passes=$(echo "$output" | grep -c "PASS:" || true)
+                echo "  ✓ OK ($passes assertions passed)"
+            fi
+        else
+            echo "  ✗ FAILED (render error)"
+            echo "$output" | tail -5 | sed 's/^/    /'
+            failed=$((failed + 1))
+        fi
+    done < <(find projects -name "*_test.scad" -type f -print0)
+
+    echo ""
+    if [ $count -eq 0 ]; then
+        echo "No test files found (looking for *_test.scad in projects/)"
+        exit 0
+    elif [ $failed -gt 0 ]; then
+        echo "✗ $failed of $count test file(s) failed"
+        exit 1
+    else
+        echo "✓ All $count test file(s) passed"
+    fi
+
+# Run tests for a specific project
+test-project project:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    openscad_bin="{{_openscad_bin}}"
+    project_dir="projects/{{project}}"
+
+    if [ ! -d "$project_dir" ]; then
+        echo "Error: Project directory '$project_dir' not found"
+        exit 1
+    fi
+
+    failed=0
+    count=0
+
+    while IFS= read -r -d '' test_file; do
+        count=$((count + 1))
+        echo "Running: $test_file"
+        if output=$("$openscad_bin" --hardwarnings --export-format csg -o /dev/null "$test_file" 2>&1); then
+            if echo "$output" | grep -q "FAIL:"; then
+                echo "  ✗ FAILED (assertion)"
+                echo "$output" | grep "FAIL:" | sed 's/^/    /'
+                failed=$((failed + 1))
+            else
+                passes=$(echo "$output" | grep -c "PASS:" || true)
+                echo "  ✓ OK ($passes assertions passed)"
+            fi
+        else
+            echo "  ✗ FAILED (render error)"
+            echo "$output" | tail -5 | sed 's/^/    /'
+            failed=$((failed + 1))
+        fi
+    done < <(find "$project_dir" -name "*_test.scad" -type f -print0)
+
+    echo ""
+    if [ $count -eq 0 ]; then
+        echo "No test files found in $project_dir"
+        exit 0
+    elif [ $failed -gt 0 ]; then
+        echo "✗ $failed of $count test file(s) failed"
+        exit 1
+    else
+        echo "✓ All $count test file(s) passed"
+    fi
+
 # ===== OPENSCAD =====
 
 # Find OpenSCAD binary (Homebrew install)
@@ -66,8 +153,11 @@ build:
     openscad() { {{_openscad_bin}} "$@" 2>/dev/null; }
     mkdir -p artifacts/stl
 
-    # Find all .scad files in projects/
-    find projects -name "*.scad" -type f | while read -r f; do
+    # Find all .scad files in projects/ (exclude test and constants files)
+    find projects -name "*.scad" -type f \
+        ! -name "*_test.scad" \
+        ! -name "*_constants.scad" \
+        ! -name "*_reference.scad" | while read -r f; do
         project_name=$(dirname "$f" | sed 's|projects/||')
         basename=$(basename "$f" .scad)
         out="artifacts/stl/${project_name}__${basename}.stl"
@@ -143,9 +233,13 @@ check:
     #!/usr/bin/env bash
     set -euo pipefail
     failed=0
-    find projects -name "*.scad" -type f | while read -r f; do
+    # Exclude test, constants, and reference files (not meant to be rendered as models)
+    find projects -name "*.scad" -type f \
+        ! -name "*_test.scad" \
+        ! -name "*_constants.scad" \
+        ! -name "*_reference.scad" | while read -r f; do
         echo "Rendering $f..."
-        if ! {{_openscad_bin}} -o /dev/null "$f" 2>/dev/null; then
+        if ! {{_openscad_bin}} --export-format csg -o /dev/null "$f" 2>/dev/null; then
             echo "  ✗ FAILED"
             failed=1
         else
