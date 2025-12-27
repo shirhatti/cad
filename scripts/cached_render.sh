@@ -49,24 +49,26 @@ FULLNAME="${PROJECT_NAME}__${BASENAME}"
 
 # Compute content hash of the .scad file
 FILE_HASH=$(sha256sum "$SCAD_FILE" | cut -d' ' -f1)
-# Cache key: model name + version hash + content hash (truncated for readability)
-CACHE_KEY="${FULLNAME}-${VERSION_HASH}-${FILE_HASH:0:12}"
+# Cache tag includes version+hash for content-addressable lookup
+CACHE_TAG="${FULLNAME}-${VERSION_HASH}-${FILE_HASH:0:12}"
 
 STL_FILE="${OUTPUT_DIR}/stl/${FULLNAME}.stl"
 PNG_FILE="${OUTPUT_DIR}/preview/${FULLNAME}.png"
 
-OCI_REF="${REGISTRY}/${REPO_OWNER}/${PACKAGE_NAME}:${CACHE_KEY}"
+OCI_BASE="${REGISTRY}/${REPO_OWNER}/${PACKAGE_NAME}"
+OCI_REF_CACHE="${OCI_BASE}:${CACHE_TAG}"
+OCI_REF_LATEST="${OCI_BASE}:${FULLNAME}"
 
 mkdir -p "${OUTPUT_DIR}/stl" "${OUTPUT_DIR}/preview"
 
-# Try to pull from cache
+# Try to pull from cache (using content-addressed tag)
 if [[ "${SKIP_CACHE:-0}" != "1" ]]; then
-    echo "Checking cache for ${FULLNAME} (${CACHE_KEY:0:16})..."
+    echo "Checking cache for ${FULLNAME}..."
 
     TEMP_DIR=$(mktemp -d)
     trap "rm -rf $TEMP_DIR" EXIT
 
-    if oras pull "$OCI_REF" -o "$TEMP_DIR" 2>/dev/null; then
+    if oras pull "$OCI_REF_CACHE" -o "$TEMP_DIR" 2>/dev/null; then
         echo "✓ Cache hit for ${FULLNAME}"
         cp "${TEMP_DIR}/${FULLNAME}.stl" "$STL_FILE"
         cp "${TEMP_DIR}/${FULLNAME}.png" "$PNG_FILE"
@@ -87,21 +89,28 @@ xvfb-run --auto-servernum openscad -o "$PNG_FILE" \
 
 # Push to cache (best effort, don't fail the build)
 if [[ "${SKIP_CACHE:-0}" != "1" ]]; then
-    echo "Pushing to cache: $OCI_REF"
-
     PUSH_DIR=$(mktemp -d)
     cp "$STL_FILE" "${PUSH_DIR}/${FULLNAME}.stl"
     cp "$PNG_FILE" "${PUSH_DIR}/${FULLNAME}.png"
 
     (
         cd "$PUSH_DIR"
-        if oras push "$OCI_REF" \
+        # Push to content-addressed tag (for cache hits on unchanged files)
+        if oras push "$OCI_REF_CACHE" \
             --artifact-type application/vnd.openscad.render \
             "${FULLNAME}.stl:application/sla" \
-            "${FULLNAME}.png:image/png"; then
+            "${FULLNAME}.png:image/png" 2>/dev/null; then
             echo "✓ Cached ${FULLNAME}"
         else
-            echo "⚠ Failed to cache ${FULLNAME} to ${OCI_REF} (continuing anyway)"
+            echo "⚠ Failed to cache ${FULLNAME} (continuing anyway)"
+        fi
+
+        # Also push to simple tag (latest version, easy to pull)
+        if oras push "$OCI_REF_LATEST" \
+            --artifact-type application/vnd.openscad.render \
+            "${FULLNAME}.stl:application/sla" \
+            "${FULLNAME}.png:image/png" 2>/dev/null; then
+            echo "✓ Tagged ${FULLNAME} as latest"
         fi
     )
 

@@ -63,20 +63,23 @@ fi
 SLICER_VERSION=$(orca-slicer --help 2>&1 | head -1 | grep -oP 'v[\d.]+' || echo "unknown")
 SLICER_HASH=$(echo "$SLICER_VERSION" | sha256sum | cut -c1-8)
 
-# Cache key: model name + slicer hash + profiles hash + STL hash (truncated for readability)
-CACHE_KEY="${MODEL_NAME}-${SLICER_HASH}-${PROFILES_HASH:0:8}-${STL_HASH:0:12}"
-OCI_REF="${REGISTRY}/${REPO_OWNER}/${PACKAGE_NAME}:${CACHE_KEY}"
+# Cache tag includes slicer+profiles+content for content-addressable lookup
+CACHE_TAG="${MODEL_NAME}-${SLICER_HASH}-${PROFILES_HASH:0:8}-${STL_HASH:0:12}"
+
+OCI_BASE="${REGISTRY}/${REPO_OWNER}/${PACKAGE_NAME}"
+OCI_REF_CACHE="${OCI_BASE}:${CACHE_TAG}"
+OCI_REF_LATEST="${OCI_BASE}:${MODEL_NAME}"
 
 mkdir -p "${ARTIFACTS_DIR}/gcode" "${ARTIFACTS_DIR}/logs"
 
-# Try to pull from cache
+# Try to pull from cache (using content-addressed tag)
 if [[ "${SKIP_CACHE:-0}" != "1" ]]; then
-    echo "Checking slice cache for ${MODEL_NAME} (${CACHE_KEY:0:20})..."
+    echo "Checking slice cache for ${MODEL_NAME}..."
 
     TEMP_DIR=$(mktemp -d)
     trap "rm -rf $TEMP_DIR" EXIT
 
-    if oras pull "$OCI_REF" -o "$TEMP_DIR" 2>/dev/null; then
+    if oras pull "$OCI_REF_CACHE" -o "$TEMP_DIR" 2>/dev/null; then
         echo "✓ Slice cache hit for ${MODEL_NAME}"
         cp "${TEMP_DIR}/${MODEL_NAME}.3mf" "$OUTPUT_FILE"
         cp "${TEMP_DIR}/${MODEL_NAME}.log" "$LOG_FILE"
@@ -91,21 +94,28 @@ xvfb-run --auto-servernum just slice "$MODEL_NAME"
 
 # Push to cache (best effort)
 if [[ "${SKIP_CACHE:-0}" != "1" ]] && [[ -f "$OUTPUT_FILE" ]]; then
-    echo "Pushing slice to cache: $OCI_REF"
-
     PUSH_DIR=$(mktemp -d)
     cp "$OUTPUT_FILE" "${PUSH_DIR}/${MODEL_NAME}.3mf"
     cp "$LOG_FILE" "${PUSH_DIR}/${MODEL_NAME}.log" 2>/dev/null || touch "${PUSH_DIR}/${MODEL_NAME}.log"
 
     (
         cd "$PUSH_DIR"
-        if oras push "$OCI_REF" \
+        # Push to content-addressed tag (for cache hits on unchanged files)
+        if oras push "$OCI_REF_CACHE" \
             --artifact-type application/vnd.orcaslicer.slice \
             "${MODEL_NAME}.3mf:application/vnd.ms-package.3dmanufacturing-3dmodel+xml" \
-            "${MODEL_NAME}.log:text/plain"; then
+            "${MODEL_NAME}.log:text/plain" 2>/dev/null; then
             echo "✓ Cached slice for ${MODEL_NAME}"
         else
-            echo "⚠ Failed to cache slice for ${MODEL_NAME} to ${OCI_REF} (continuing anyway)"
+            echo "⚠ Failed to cache slice for ${MODEL_NAME} (continuing anyway)"
+        fi
+
+        # Also push to simple tag (latest version, easy to pull)
+        if oras push "$OCI_REF_LATEST" \
+            --artifact-type application/vnd.orcaslicer.slice \
+            "${MODEL_NAME}.3mf:application/vnd.ms-package.3dmanufacturing-3dmodel+xml" \
+            "${MODEL_NAME}.log:text/plain" 2>/dev/null; then
+            echo "✓ Tagged slice ${MODEL_NAME} as latest"
         fi
     )
 
