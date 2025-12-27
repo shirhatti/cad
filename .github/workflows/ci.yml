@@ -145,6 +145,7 @@ jobs:
       with:
         name: stl-models
         path: artifacts/stl/*.stl
+        if-no-files-found: warn
         retention-days: 7
 
     - name: Upload preview images
@@ -153,6 +154,7 @@ jobs:
       with:
         name: preview-images
         path: artifacts/preview/*.png
+        if-no-files-found: warn
         retention-days: 7
 
     - name: Upload sliced 3MF files
@@ -161,6 +163,7 @@ jobs:
       with:
         name: sliced-3mf
         path: artifacts/gcode/*.3mf
+        if-no-files-found: warn
         retention-days: 7
 
     - name: Upload logs
@@ -169,12 +172,14 @@ jobs:
       with:
         name: build-logs
         path: artifacts/logs/*.log
+        if-no-files-found: warn
         retention-days: 7
 
     - name: Check for errors
       run: |
-        if grep -r "error when validate" artifacts/logs/ 2>/dev/null; then
+        if [ -d artifacts/logs ] && grep -rq "error when validate" artifacts/logs/; then
           echo "❌ Found validation errors in slicing logs"
+          grep -r "error when validate" artifacts/logs/
           exit 1
         fi
         echo "✅ All models rendered and sliced successfully"
