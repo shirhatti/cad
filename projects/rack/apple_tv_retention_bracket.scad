@@ -39,8 +39,10 @@ cutout_depth = 93; // [50:1:100]
 /* [Retention Lip] */
 // How far the lip extends inward over the device
 lip_overhang = 4; // [2:1:10]
-// Radius of the curved lip profile
-lip_radius = 4; // [2:1:8]
+// Thickness of the lip (hangs down from top plate)
+lip_thickness = 3; // [2:1:6]
+// Corner radius for squircle shape
+corner_radius = 10; // [5:1:20]
 
 /* [Threaded Insert Bosses] */
 // Insert size: M4 or M5
@@ -69,18 +71,43 @@ $fn = 64;
 // Calculate insert hole diameter based on selected size
 insert_hole_diameter = (insert_size == "M5") ? m5_hole_diameter : m4_hole_diameter;
 
-// Top plate with center ventilation cutout
-// Creates a rectangular frame with left/right rails and front/back crossbars
-module top_plate() {
-    difference() {
-        // Outer plate
-        cube([bracket_width, bracket_depth, top_plate_thickness]);
+// 2D rounded rectangle (squircle)
+module rounded_rect(width, depth, radius) {
+    offset(r = radius)
+    offset(r = -radius)
+        square([width, depth], center = true);
+}
 
-        // Center ventilation cutout
-        translate([(bracket_width - cutout_width) / 2,
-                   (bracket_depth - cutout_depth) / 2,
-                   -0.5])
-            cube([cutout_width, cutout_depth, top_plate_thickness + 1]);
+// Top plate with rounded cutout and integrated retention lip
+module top_plate() {
+    // Inner dimensions (device cavity)
+    inner_width = bracket_width - 2 * wall_thickness;
+    inner_depth = bracket_depth;  // Open front/back
+
+    difference() {
+        // Outer plate with rounded corners
+        translate([bracket_width/2, bracket_depth/2, 0])
+            linear_extrude(height = top_plate_thickness)
+            rounded_rect(bracket_width, bracket_depth, corner_radius);
+
+        // Center ventilation cutout (smaller than inner, leaves lip)
+        translate([bracket_width/2, bracket_depth/2, -0.5])
+            linear_extrude(height = top_plate_thickness + 1)
+            rounded_rect(inner_width - 2*lip_overhang, inner_depth - 2*lip_overhang, corner_radius);
+    }
+
+    // Retention lip hanging down from top plate
+    translate([0, 0, -lip_thickness])
+    difference() {
+        // Outer boundary of lip (same as inner edge of top plate frame)
+        translate([bracket_width/2, bracket_depth/2, 0])
+            linear_extrude(height = lip_thickness)
+            rounded_rect(inner_width, inner_depth, corner_radius);
+
+        // Inner cutout (device clearance)
+        translate([bracket_width/2, bracket_depth/2, -0.5])
+            linear_extrude(height = lip_thickness + 1)
+            rounded_rect(inner_width - 2*lip_overhang, inner_depth - 2*lip_overhang, corner_radius);
     }
 }
 
@@ -102,29 +129,6 @@ module counterbore_cut() {
     counterbore_depth = 1; // Subtle step to indicate insert location
     counterbore_diameter = boss_diameter - 2; // Step around insert hole
     cylinder(d = counterbore_diameter, h = counterbore_depth);
-}
-
-// Curved retention lip profile (2D cross-section)
-// Creates a quarter-circle that curves down and inward
-module lip_profile() {
-    difference() {
-        square([lip_overhang, lip_radius]);
-        translate([lip_overhang, lip_radius])
-            circle(r = lip_radius);
-    }
-}
-
-// Retention lip that extends along the wall
-// Positioned at the top inner edge of each wall, curving inward over the device
-module retention_lip(length, is_left) {
-    // Position at top of wall, extending inward
-    // Left wall: lip extends to the right (positive X)
-    // Right wall: lip extends to the left (negative X)
-    translate([is_left ? wall_thickness : -lip_overhang, 0, side_wall_height])
-        rotate([90, 0, 0])
-        rotate([0, 90, 0])
-        linear_extrude(height = length)
-            lip_profile();
 }
 
 // Flange to support insert boss extending OUTWARD (away from device)
@@ -205,14 +209,6 @@ module bracket() {
     translate([bracket_width - wall_thickness, 0, 0])
         side_wall(is_left = false);
 
-    // Curved retention lips along inner edges of walls
-    // Left wall lip (extends inward to the right)
-    translate([0, bracket_depth, 0])
-        retention_lip(bracket_depth, is_left = true);
-
-    // Right wall lip (extends inward to the left)
-    translate([bracket_width, bracket_depth, 0])
-        retention_lip(bracket_depth, is_left = false);
 }
 
 // Main model
