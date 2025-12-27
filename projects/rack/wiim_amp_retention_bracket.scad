@@ -214,8 +214,8 @@ module bracket() {
 // Main model - in print orientation (top plate on build plate, bosses pointing up)
 // Guard: skip rendering if included by another file (e.g., tests)
 if (!is_undef(RENDER_BRACKET) ? RENDER_BRACKET : true) {
-    // Rotate 180° around X to flip upside-down, then translate to positive space
-    translate([boss_overhang + boss_diameter/2, bracket_depth, side_wall_height + top_plate_thickness])
+    // Rotate 180° around X to flip upside-down, center on XY plane for slicer
+    translate([-bracket_width/2, bracket_depth/2, side_wall_height + top_plate_thickness])
         rotate([180, 0, 0])
             bracket();
 }
