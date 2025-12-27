@@ -63,8 +63,8 @@ fi
 SLICER_VERSION=$(orca-slicer --help 2>&1 | head -1 | grep -oP 'v[\d.]+' || echo "unknown")
 SLICER_HASH=$(echo "$SLICER_VERSION" | sha256sum | cut -c1-8)
 
-# Combined cache key
-CACHE_KEY="${SLICER_HASH}-${PROFILES_HASH:0:8}-${STL_HASH:0:32}"
+# Cache key: model name + slicer hash + profiles hash + STL hash (truncated for readability)
+CACHE_KEY="${MODEL_NAME}-${SLICER_HASH}-${PROFILES_HASH:0:8}-${STL_HASH:0:12}"
 OCI_REF="${REGISTRY}/${REPO_OWNER}/${PACKAGE_NAME}:${CACHE_KEY}"
 
 mkdir -p "${ARTIFACTS_DIR}/gcode" "${ARTIFACTS_DIR}/logs"

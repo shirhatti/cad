@@ -42,15 +42,15 @@ if [[ ! -f "$SCAD_FILE" ]]; then
     exit 1
 fi
 
-# Compute content hash of the .scad file
-FILE_HASH=$(sha256sum "$SCAD_FILE" | cut -d' ' -f1)
-# Combine with OpenSCAD version for full cache key
-CACHE_KEY="${VERSION_HASH}-${FILE_HASH}"
-
-# Derive output names
+# Derive output names first (needed for cache key)
 PROJECT_NAME=$(dirname "$SCAD_FILE" | sed 's|^projects/||')
 BASENAME=$(basename "$SCAD_FILE" .scad)
 FULLNAME="${PROJECT_NAME}__${BASENAME}"
+
+# Compute content hash of the .scad file
+FILE_HASH=$(sha256sum "$SCAD_FILE" | cut -d' ' -f1)
+# Cache key: model name + version hash + content hash (truncated for readability)
+CACHE_KEY="${FULLNAME}-${VERSION_HASH}-${FILE_HASH:0:12}"
 
 STL_FILE="${OUTPUT_DIR}/stl/${FULLNAME}.stl"
 PNG_FILE="${OUTPUT_DIR}/preview/${FULLNAME}.png"
