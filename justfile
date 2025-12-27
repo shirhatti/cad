@@ -153,8 +153,10 @@ build:
     openscad() { {{_openscad_bin}} "$@" 2>/dev/null; }
     mkdir -p artifacts/stl
 
-    # Find all .scad files in projects/
-    find projects -name "*.scad" -type f | while read -r f; do
+    # Find all .scad files in projects/ (exclude test and constants files)
+    find projects -name "*.scad" -type f \
+        ! -name "*_test.scad" \
+        ! -name "*_constants.scad" | while read -r f; do
         project_name=$(dirname "$f" | sed 's|projects/||')
         basename=$(basename "$f" .scad)
         out="artifacts/stl/${project_name}__${basename}.stl"
@@ -230,9 +232,12 @@ check:
     #!/usr/bin/env bash
     set -euo pipefail
     failed=0
-    find projects -name "*.scad" -type f | while read -r f; do
+    # Exclude test and constants files (not meant to be rendered as models)
+    find projects -name "*.scad" -type f \
+        ! -name "*_test.scad" \
+        ! -name "*_constants.scad" | while read -r f; do
         echo "Rendering $f..."
-        if ! {{_openscad_bin}} -o /dev/null "$f" 2>/dev/null; then
+        if ! {{_openscad_bin}} --export-format csg -o /dev/null "$f" 2>/dev/null; then
             echo "  ✗ FAILED"
             failed=1
         else
