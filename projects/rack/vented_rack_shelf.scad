@@ -3,8 +3,8 @@
 //
 // Based on typical 1U vented rack shelf specifications:
 // - Usable shelf area: 438mm × 252mm
-// - Slot pattern: 20mm long × 6mm wide slots (oriented along Y-axis/short edge)
-// - Slot spacing: 20mm center-to-center (X-axis), 35.5mm row spacing (Y-axis)
+// - Slot pattern: 35.5mm long × 6mm wide slots (oriented along Y-axis/short edge)
+// - 19 columns × 3 rows, 20mm X-spacing (360mm total span)
 // - Material: SPCC steel, ~1mm thick
 
 /* [Shelf Dimensions] */
@@ -16,18 +16,18 @@ shelf_depth = 252; // [200:1:300]
 shelf_thickness = 1.2; // [1:0.1:2]
 
 /* [Ventilation Slot Pattern] */
-// Slot length (X-axis)
-slot_length = 20; // [15:1:25]
-// Slot width (Y-axis)
+// Slot length (along Y-axis)
+slot_length = 35.5; // [30:0.5:45]
+// Slot width (along X-axis)
 slot_width = 6; // [5:0.5:8]
 // Slot corner radius
 slot_radius = 2; // [1:0.5:3]
+// Number of columns (X-axis)
+slot_columns = 19; // [10:1:25]
+// Number of rows (Y-axis)
+slot_rows = 3; // [1:1:6]
 // X-axis spacing between slot centers
 slot_spacing_x = 20; // [15:1:30]
-// Y-axis spacing between row centers
-slot_spacing_y = 35.5; // [30:0.5:45]
-// Margin from shelf edges to first slots
-edge_margin = 15; // [10:1:30]
 
 /* [Rendering] */
 $fa = 2;
@@ -49,13 +49,14 @@ module vent_slot() {
 
 // Shelf with ventilation slots
 module vented_shelf() {
-    // Calculate slot grid
-    slots_x = floor((shelf_width - 2 * edge_margin) / slot_spacing_x);
-    slots_y = floor((shelf_depth - 2 * edge_margin) / slot_spacing_y);
+    // X-axis: 19 columns × 20mm spacing = 360mm span, centered in shelf_width
+    x_span = (slot_columns - 1) * slot_spacing_x; // 360mm
+    start_x = (shelf_width - x_span) / 2 - slot_width / 2;
 
-    // Center the slot pattern (slots oriented along Y-axis)
-    start_x = (shelf_width - (slots_x - 1) * slot_spacing_x) / 2 - slot_width / 2;
-    start_y = (shelf_depth - (slots_y - 1) * slot_spacing_y) / 2 - slot_length / 2;
+    // Y-axis: 3 rows centered in shelf_depth, evenly distributed
+    y_span = shelf_depth - slot_length - 20; // leave ~10mm margin top/bottom
+    slot_spacing_y = (slot_rows > 1) ? y_span / (slot_rows - 1) : 0;
+    start_y = (shelf_depth - y_span) / 2 - slot_length / 2;
 
     color(shelf_color)
     difference() {
@@ -63,8 +64,8 @@ module vented_shelf() {
         cube([shelf_width, shelf_depth, shelf_thickness]);
 
         // Cut ventilation slots
-        for (ix = [0 : slots_x - 1]) {
-            for (iy = [0 : slots_y - 1]) {
+        for (ix = [0 : slot_columns - 1]) {
+            for (iy = [0 : slot_rows - 1]) {
                 translate([start_x + ix * slot_spacing_x,
                            start_y + iy * slot_spacing_y,
                            -0.5])
