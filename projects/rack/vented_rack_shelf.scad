@@ -29,7 +29,7 @@ slot_rows = 3; // [1:1:6]
 // X-axis spacing between slot centers
 slot_spacing_x = 20; // [15:1:30]
 // Y-axis spacing between row centers
-slot_spacing_y = 75; // [50:5:100]
+slot_spacing_y = 53; // [40:1:100]
 
 /* [Rendering] */
 $fa = 2;
