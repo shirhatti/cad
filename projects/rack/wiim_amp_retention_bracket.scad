@@ -77,12 +77,17 @@ module top_plate() {
 }
 
 // Threaded insert boss with hole for heat-set insert
+// Boss extends from below the wall up into the wall base for structural strength
 module insert_boss() {
-    difference() {
-        // Cylindrical boss
-        cylinder(d = boss_diameter, h = boss_height);
+    // Total boss height: extends below wall + embedded portion in wall
+    boss_embed = 5; // How far boss extends up into wall
+    total_height = boss_height + boss_embed;
 
-        // Insert hole (from bottom, doesn't go all the way through)
+    difference() {
+        // Cylindrical boss - extends from below wall into wall base
+        cylinder(d = boss_diameter, h = total_height);
+
+        // Insert hole (from bottom, goes up but not through)
         translate([0, 0, -0.5])
             cylinder(d = insert_hole_diameter, h = insert_hole_depth + 0.5);
     }
@@ -91,15 +96,17 @@ module insert_boss() {
 // Side wall with insert bosses at front and back corners
 module side_wall() {
     // Wall is oriented along Y axis (front to back)
+    boss_embed = 5; // Must match value in insert_boss()
+
     union() {
         // Main wall body
         cube([wall_thickness, bracket_depth, side_wall_height]);
 
-        // Front insert boss - centered in wall thickness
+        // Front insert boss - centered in wall thickness, embedded into wall base
         translate([wall_thickness / 2, front_insert_offset, -boss_height])
             insert_boss();
 
-        // Back insert boss - centered in wall thickness
+        // Back insert boss - centered in wall thickness, embedded into wall base
         translate([wall_thickness / 2, bracket_depth - back_insert_offset, -boss_height])
             insert_boss();
     }
