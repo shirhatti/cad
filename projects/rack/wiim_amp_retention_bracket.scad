@@ -213,4 +213,7 @@ module bracket() {
 
 // Main model
 // Everything sits flush on shelf at Z = 0
-bracket();
+// Guard: skip rendering if included by another file (e.g., tests)
+if (!is_undef(RENDER_BRACKET) ? RENDER_BRACKET : true) {
+    bracket();
+}

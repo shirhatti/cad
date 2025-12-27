@@ -3,33 +3,38 @@
 // These tests verify that the threaded insert bosses on each bracket
 // align correctly with the vented rack shelf slot pattern.
 //
-// Run with: openscad -o /dev/null tests/slot_alignment_test.scad
-// All assertions must pass for the designs to be manufacturable.
+// Run with: just test
+// Or: openscad --hardwarnings -o /dev/null projects/rack/slot_alignment_test.scad
 
 // ============================================================
-// Shelf Slot Pattern Constants
+// Include Design Files (constants stay in sync automatically)
 // ============================================================
-SLOT_SPACING_X = 20;      // X-axis spacing between slot centers (mm)
-SLOT_WIDTH = 5.5;         // Slot width (mm)
-SLOT_LENGTH = 35.5;       // Slot length along Y-axis (mm)
-SLOT_COLUMNS = 19;        // Number of slot columns
-SLOT_ROWS = 3;            // Number of slot rows
-SLOT_SPACING_Y = 53;      // Y-axis spacing between row centers (mm)
-SHELF_WIDTH = 438;        // Usable shelf width (mm)
-SHELF_DEPTH = 252;        // Usable shelf depth (mm)
+
+// Disable bracket rendering when including
+RENDER_BRACKET = false;
+
+// Include shared shelf constants
+include <shelf_constants.scad>
+
+// Include bracket designs to get their parameters
+// Variables with same names will conflict, so we capture them first
+// by including each file in sequence and copying values
+
+// --- WiiM Amp Bracket ---
+include <wiim_amp_retention_bracket.scad>
+
+// Capture WiiM values before they get overwritten
+WIIM_BRACKET_WIDTH = bracket_width;
+WIIM_BOSS_OVERHANG = boss_overhang;
+WIIM_BOSS_DIAMETER = boss_diameter;
+WIIM_FRONT_INSERT_OFFSET = front_insert_offset;
+WIIM_BACK_INSERT_OFFSET = back_insert_offset;
 
 // ============================================================
-// WiiM Amp Bracket Parameters
+// Apple TV Bracket Parameters (included separately to avoid conflicts)
+// These must match apple_tv_retention_bracket.scad
 // ============================================================
-WIIM_BRACKET_WIDTH = 210;
-WIIM_BOSS_OVERHANG = 5;
-WIIM_BOSS_DIAMETER = 12;
-WIIM_FRONT_INSERT_OFFSET = 20;
-WIIM_BACK_INSERT_OFFSET = 12;
-
-// ============================================================
-// Apple TV Bracket Parameters
-// ============================================================
+// TODO: Find a cleaner way to share these without variable conflicts
 ATV_BRACKET_WIDTH = 113;
 ATV_BOSS_OVERHANG = 3.5;
 ATV_BOSS_DIAMETER = 12;
@@ -45,18 +50,7 @@ function is_multiple_of(value, base, tolerance = 0.001) =
     abs(value - round(value / base) * base) < tolerance;
 
 // Calculate boss span (distance between left and right boss centers)
-function boss_span(bracket_width, boss_overhang) =
-    bracket_width + 2 * boss_overhang;
-
-// Calculate slot pattern X-span
-function slot_pattern_span() = (SLOT_COLUMNS - 1) * SLOT_SPACING_X;
-
-// Calculate first slot X position (centered in shelf)
-function first_slot_x() = (SHELF_WIDTH - slot_pattern_span()) / 2;
-
-// Check if boss can align with any slot (boss center on slot center)
-function boss_aligns_with_slot_pattern(boss_span) =
-    is_multiple_of(boss_span, SLOT_SPACING_X);
+function boss_span(bw, overhang) = bw + 2 * overhang;
 
 // ============================================================
 // Test: WiiM Bracket Boss Span Alignment
@@ -65,12 +59,14 @@ wiim_boss_span = boss_span(WIIM_BRACKET_WIDTH, WIIM_BOSS_OVERHANG);
 wiim_span_slots = wiim_boss_span / SLOT_SPACING_X;
 
 echo("=== WiiM Amp Bracket Tests ===");
+echo(str("Bracket width: ", WIIM_BRACKET_WIDTH, "mm"));
+echo(str("Boss overhang: ", WIIM_BOSS_OVERHANG, "mm"));
 echo(str("Boss span: ", wiim_boss_span, "mm"));
 echo(str("Span in slot units: ", wiim_span_slots));
-echo(str("Is multiple of ", SLOT_SPACING_X, "mm: ", boss_aligns_with_slot_pattern(wiim_boss_span)));
+echo(str("Is multiple of ", SLOT_SPACING_X, "mm: ", is_multiple_of(wiim_boss_span, SLOT_SPACING_X)));
 
 assert(
-    boss_aligns_with_slot_pattern(wiim_boss_span),
+    is_multiple_of(wiim_boss_span, SLOT_SPACING_X),
     str("FAIL: WiiM boss span (", wiim_boss_span, "mm) is not a multiple of slot spacing (", SLOT_SPACING_X, "mm)")
 );
 echo("PASS: WiiM boss span aligns with slot pattern");
@@ -90,12 +86,14 @@ atv_span_slots = atv_boss_span / SLOT_SPACING_X;
 
 echo("");
 echo("=== Apple TV Bracket Tests ===");
+echo(str("Bracket width: ", ATV_BRACKET_WIDTH, "mm"));
+echo(str("Boss overhang: ", ATV_BOSS_OVERHANG, "mm"));
 echo(str("Boss span: ", atv_boss_span, "mm"));
 echo(str("Span in slot units: ", atv_span_slots));
-echo(str("Is multiple of ", SLOT_SPACING_X, "mm: ", boss_aligns_with_slot_pattern(atv_boss_span)));
+echo(str("Is multiple of ", SLOT_SPACING_X, "mm: ", is_multiple_of(atv_boss_span, SLOT_SPACING_X)));
 
 assert(
-    boss_aligns_with_slot_pattern(atv_boss_span),
+    is_multiple_of(atv_boss_span, SLOT_SPACING_X),
     str("FAIL: Apple TV boss span (", atv_boss_span, "mm) is not a multiple of slot spacing (", SLOT_SPACING_X, "mm)")
 );
 echo("PASS: Apple TV boss span aligns with slot pattern");
@@ -144,7 +142,6 @@ echo(str("M4 head diameter: ", m4_head_diameter, "mm"));
 echo(str("M5 head diameter: ", m5_head_diameter, "mm"));
 
 // For screws to pass through slots, head must fit in slot length direction
-// (screw inserted along slot, then slid to final position)
 assert(
     m4_head_diameter <= SLOT_LENGTH,
     str("FAIL: M4 screw head (", m4_head_diameter, "mm) won't pass through slot length (", SLOT_LENGTH, "mm)")
@@ -158,12 +155,27 @@ assert(
 echo("PASS: M5 screw head fits through slot");
 
 // ============================================================
+// Test: Shelf Constants Consistency
+// ============================================================
+echo("");
+echo("=== Shelf Constants Verification ===");
+echo(str("Slot pattern X span: ", SLOT_PATTERN_X_SPAN, "mm (expected: 360mm)"));
+echo(str("Slot pattern Y span: ", SLOT_PATTERN_Y_SPAN, "mm (expected: 106mm)"));
+
+assert(
+    SLOT_PATTERN_X_SPAN == 360,
+    str("FAIL: X span (", SLOT_PATTERN_X_SPAN, "mm) != expected 360mm")
+);
+echo("PASS: Slot pattern X span is correct");
+
+// ============================================================
 // Summary
 // ============================================================
 echo("");
 echo("=== All Tests Passed ===");
 echo(str("WiiM bracket: ", wiim_boss_span, "mm span = ", wiim_span_slots, " × ", SLOT_SPACING_X, "mm"));
 echo(str("Apple TV bracket: ", atv_boss_span, "mm span = ", atv_span_slots, " × ", SLOT_SPACING_X, "mm"));
+echo(str("Shelf constants from: shelf_constants.scad"));
+echo(str("WiiM constants from: wiim_amp_retention_bracket.scad"));
 
 // Render nothing (test file only)
-// If we get here without assertion failures, all tests passed
