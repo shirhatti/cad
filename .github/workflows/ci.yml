@@ -129,16 +129,36 @@ jobs:
           xvfb-run just slice "$fullname"
         done
 
-    - name: Upload artifacts
+    - name: Upload STL models
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: build-artifacts
-        path: |
-          artifacts/stl/*.stl
-          artifacts/preview/*.png
-          artifacts/gcode/*.3mf
-          artifacts/logs/*.log
+        name: stl-models
+        path: artifacts/stl/*.stl
+        retention-days: 7
+
+    - name: Upload preview images
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: preview-images
+        path: artifacts/preview/*.png
+        retention-days: 7
+
+    - name: Upload sliced 3MF files
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: sliced-3mf
+        path: artifacts/gcode/*.3mf
+        retention-days: 7
+
+    - name: Upload logs
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: build-logs
+        path: artifacts/logs/*.log
         retention-days: 7
 
     - name: Check for errors
