@@ -53,8 +53,8 @@ insert_hole_depth = 8; // [6:1:12]
 front_insert_offset = 20; // [10:1:40]
 // Back insert distance from back edge (center of boss)
 back_insert_offset = 12; // [10:1:40]
-// Boss overhang from wall INWARD (for slot alignment: 6.25mm gives 177.5mm = 5 × 35.5mm spacing)
-boss_overhang = 6.25; // [0:0.5:15]
+// Boss overhang from wall OUTWARD (for slot alignment: 6.5mm gives 213mm = 6 × 35.5mm spacing)
+boss_overhang = 6.5; // [0:0.5:15]
 
 /* [Rendering] */
 $fa = 1;
@@ -95,32 +95,32 @@ module insert_boss() {
     }
 }
 
-// Flange to support insert boss extending INWARD (toward device)
-// This allows the boss to rest on the shelf surface for proper screw clamping
+// Flange to support insert boss extending OUTWARD (away from device)
+// Boss rests on shelf surface, screw from below creates clamping force
 module boss_flange(y_pos, is_left) {
     boss_embed = 5;
     flange_height = boss_height + boss_embed; // Full height: from boss bottom to wall embed
     flange_width = boss_overhang + boss_diameter / 2; // Extends to support boss center
 
-    // Flange extends from boss bottom up into wall base
-    // Left wall: flange goes right (positive X from wall inner edge)
-    // Right wall: flange goes left (negative X from wall inner edge)
-    translate([is_left ? wall_thickness : -flange_width,
+    // Flange extends from wall OUTWARD (away from device)
+    // Left wall: flange goes left (negative X)
+    // Right wall: flange goes right (positive X from wall outer edge)
+    translate([is_left ? -flange_width : wall_thickness,
                y_pos - boss_diameter / 2,
                -boss_height])
         cube([flange_width, boss_diameter, flange_height]);
 }
 
-// Side wall with insert bosses on INWARD flanges at front and back corners
-// Bosses extend inward so they rest on shelf surface for proper screw clamping
+// Side wall with insert bosses on OUTWARD flanges at front and back corners
+// Bosses extend outward (over shelf vent area) and down (rest on shelf surface)
 module side_wall(is_left) {
     // Wall is oriented along Y axis (front to back)
     boss_embed = 5; // Must match value in insert_boss()
 
-    // X position for boss center (overhangs INWARD toward device)
-    // Left wall: boss is to the right of wall (wall_thickness + overhang)
-    // Right wall: boss is to the left of wall (-overhang, relative to wall origin)
-    boss_x = is_left ? (wall_thickness + boss_overhang) : (-boss_overhang);
+    // X position for boss center (overhangs OUTWARD away from device)
+    // Left wall: boss is to the left of wall (-overhang)
+    // Right wall: boss is to the right of wall (wall_thickness + overhang)
+    boss_x = is_left ? (-boss_overhang) : (wall_thickness + boss_overhang);
 
     // Wall hollowing parameters
     wall_frame_width = 25; // Solid material at front and back of wall
@@ -141,12 +141,12 @@ module side_wall(is_left) {
                       side_wall_height - wall_frame_bottom - wall_frame_top]);
         }
 
-        // Front flange and insert boss (extending INWARD)
+        // Front flange and insert boss (extending OUTWARD and DOWN)
         boss_flange(front_insert_offset, is_left);
         translate([boss_x, front_insert_offset, -boss_height])
             insert_boss();
 
-        // Back flange and insert boss (extending INWARD)
+        // Back flange and insert boss (extending OUTWARD and DOWN)
         boss_flange(bracket_depth - back_insert_offset, is_left);
         translate([boss_x, bracket_depth - back_insert_offset, -boss_height])
             insert_boss();
