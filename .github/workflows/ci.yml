@@ -128,7 +128,8 @@ jobs:
         chmod +x scripts/cached_render.sh
         find projects -name "*.scad" -type f \
           ! -name "*_test.scad" \
-          ! -name "*_constants.scad" | while read -r f; do
+          ! -name "*_constants.scad" \
+          ! -name "*_reference.scad" | while read -r f; do
           scripts/cached_render.sh "$f" artifacts
         done
 
@@ -139,7 +140,8 @@ jobs:
         chmod +x scripts/cached_slice.sh
         find projects -name "*.scad" -type f \
           ! -name "*_test.scad" \
-          ! -name "*_constants.scad" | while read -r model; do
+          ! -name "*_constants.scad" \
+          ! -name "*_reference.scad" | while read -r model; do
           project_name=$(dirname "$model" | sed 's|projects/||')
           basename=$(basename "$model" .scad)
           fullname="${project_name}__${basename}"
