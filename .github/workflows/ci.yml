@@ -28,8 +28,8 @@ jobs:
     - name: Cache APT packages
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
-        packages: openscad xvfb gstreamer1.0-plugins-base libwebkit2gtk-4.1-0
-        version: 1.0
+        packages: openscad xvfb gstreamer1.0-plugins-base libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 libjavascriptcoregtk-6.0-1
+        version: 1.1
 
     - name: Cache just binary
       id: cache-just
