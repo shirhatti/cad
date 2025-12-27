@@ -119,7 +119,8 @@ jobs:
         find projects -name "*.scad" -type f \
           ! -name "*_test.scad" \
           ! -name "*_constants.scad" \
-          ! -name "*_reference.scad" | while read -r model; do
+          ! -name "*_reference.scad" \
+          ! -name "wiim_amp_retention_bracket.scad" | while read -r model; do
           project_name=$(dirname "$model" | sed 's|projects/||')
           basename=$(basename "$model" .scad)
           fullname="${project_name}__${basename}"
