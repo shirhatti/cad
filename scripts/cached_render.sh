@@ -6,7 +6,10 @@ set -euo pipefail
 
 REGISTRY="${REGISTRY:-ghcr.io}"
 REPO="${GITHUB_REPOSITORY:-}"
-CACHE_PREFIX="renders"
+# GHCR package name: use repo name with suffix (ghcr.io/owner/repo-renders)
+REPO_NAME="${REPO##*/}"
+REPO_OWNER="${REPO%%/*}"
+PACKAGE_NAME="${REPO_NAME}-renders"
 OPENSCAD_VERSION="${OPENSCAD_VERSION:-$(openscad --version 2>&1 | head -1)}"
 
 # Include OpenSCAD version in cache key to invalidate on upgrades
@@ -52,7 +55,7 @@ FULLNAME="${PROJECT_NAME}__${BASENAME}"
 STL_FILE="${OUTPUT_DIR}/stl/${FULLNAME}.stl"
 PNG_FILE="${OUTPUT_DIR}/preview/${FULLNAME}.png"
 
-OCI_REF="${REGISTRY}/${REPO}/${CACHE_PREFIX}:${CACHE_KEY}"
+OCI_REF="${REGISTRY}/${REPO_OWNER}/${PACKAGE_NAME}:${CACHE_KEY}"
 
 mkdir -p "${OUTPUT_DIR}/stl" "${OUTPUT_DIR}/preview"
 
@@ -93,10 +96,10 @@ if [[ "${SKIP_CACHE:-0}" != "1" ]]; then
     if oras push "$OCI_REF" \
         --artifact-type application/vnd.openscad.render \
         "${PUSH_DIR}/${FULLNAME}.stl:application/sla" \
-        "${PUSH_DIR}/${FULLNAME}.png:image/png" 2>/dev/null; then
+        "${PUSH_DIR}/${FULLNAME}.png:image/png"; then
         echo "✓ Cached ${FULLNAME}"
     else
-        echo "⚠ Failed to cache ${FULLNAME} (continuing anyway)"
+        echo "⚠ Failed to cache ${FULLNAME} to ${OCI_REF} (continuing anyway)"
     fi
 
     rm -rf "$PUSH_DIR"

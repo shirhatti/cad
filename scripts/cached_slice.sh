@@ -6,7 +6,10 @@ set -euo pipefail
 
 REGISTRY="${REGISTRY:-ghcr.io}"
 REPO="${GITHUB_REPOSITORY:-}"
-CACHE_PREFIX="slices"
+# GHCR package name: use repo name with suffix (ghcr.io/owner/repo-slices)
+REPO_NAME="${REPO##*/}"
+REPO_OWNER="${REPO%%/*}"
+PACKAGE_NAME="${REPO_NAME}-slices"
 
 usage() {
     echo "Usage: $0 <model_name> <artifacts_dir>"
@@ -62,7 +65,7 @@ SLICER_HASH=$(echo "$SLICER_VERSION" | sha256sum | cut -c1-8)
 
 # Combined cache key
 CACHE_KEY="${SLICER_HASH}-${PROFILES_HASH:0:8}-${STL_HASH:0:32}"
-OCI_REF="${REGISTRY}/${REPO}/${CACHE_PREFIX}:${CACHE_KEY}"
+OCI_REF="${REGISTRY}/${REPO_OWNER}/${PACKAGE_NAME}:${CACHE_KEY}"
 
 mkdir -p "${ARTIFACTS_DIR}/gcode" "${ARTIFACTS_DIR}/logs"
 
@@ -97,10 +100,10 @@ if [[ "${SKIP_CACHE:-0}" != "1" ]] && [[ -f "$OUTPUT_FILE" ]]; then
     if oras push "$OCI_REF" \
         --artifact-type application/vnd.orcaslicer.slice \
         "${PUSH_DIR}/${MODEL_NAME}.3mf:application/vnd.ms-package.3dmanufacturing-3dmodel+xml" \
-        "${PUSH_DIR}/${MODEL_NAME}.log:text/plain" 2>/dev/null; then
+        "${PUSH_DIR}/${MODEL_NAME}.log:text/plain"; then
         echo "✓ Cached slice for ${MODEL_NAME}"
     else
-        echo "⚠ Failed to cache slice for ${MODEL_NAME} (continuing anyway)"
+        echo "⚠ Failed to cache slice for ${MODEL_NAME} to ${OCI_REF} (continuing anyway)"
     fi
 
     rm -rf "$PUSH_DIR"
