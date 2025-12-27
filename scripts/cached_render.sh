@@ -104,12 +104,14 @@ if [[ "${SKIP_CACHE:-0}" != "1" ]]; then
             echo "⚠ Failed to cache ${FULLNAME} (continuing anyway)"
         fi
 
-        # Also push to simple tag (latest version, easy to pull)
-        if oras push "$OCI_REF_LATEST" \
-            --artifact-type application/vnd.openscad.render \
-            "${FULLNAME}.stl:application/sla" \
-            "${FULLNAME}.png:image/png" 2>/dev/null; then
-            echo "✓ Tagged ${FULLNAME} as latest"
+        # Only update 'latest' tag on main branch (PRs shouldn't poison the registry)
+        if [[ "${GITHUB_REF_NAME:-}" == "main" ]]; then
+            if oras push "$OCI_REF_LATEST" \
+                --artifact-type application/vnd.openscad.render \
+                "${FULLNAME}.stl:application/sla" \
+                "${FULLNAME}.png:image/png" 2>/dev/null; then
+                echo "✓ Tagged ${FULLNAME} as latest"
+            fi
         fi
     )
 

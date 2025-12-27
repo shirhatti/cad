@@ -109,12 +109,14 @@ if [[ "${SKIP_CACHE:-0}" != "1" ]] && [[ -f "$OUTPUT_FILE" ]]; then
             echo "⚠ Failed to cache slice for ${MODEL_NAME} (continuing anyway)"
         fi
 
-        # Also push to simple tag (latest version, easy to pull)
-        if oras push "$OCI_REF_LATEST" \
-            --artifact-type application/vnd.orcaslicer.slice \
-            "${MODEL_NAME}.3mf:application/vnd.ms-package.3dmanufacturing-3dmodel+xml" \
-            "${MODEL_NAME}.log:text/plain" 2>/dev/null; then
-            echo "✓ Tagged slice ${MODEL_NAME} as latest"
+        # Only update 'latest' tag on main branch (PRs shouldn't poison the registry)
+        if [[ "${GITHUB_REF_NAME:-}" == "main" ]]; then
+            if oras push "$OCI_REF_LATEST" \
+                --artifact-type application/vnd.orcaslicer.slice \
+                "${MODEL_NAME}.3mf:application/vnd.ms-package.3dmanufacturing-3dmodel+xml" \
+                "${MODEL_NAME}.log:text/plain" 2>/dev/null; then
+                echo "✓ Tagged slice ${MODEL_NAME} as latest"
+            fi
         fi
     )
 
