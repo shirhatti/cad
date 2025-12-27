@@ -8,7 +8,7 @@ Personal CAD projects designed with OpenSCAD and sliced with Orca Slicer.
 
 Each project is in its own subdirectory under `projects/`:
 
-- [rack-shelf-apple-tv-mount](./projects/rack-shelf-apple-tv-mount/) - Mount for Apple TV on 1U rack shelf
+- [rack](./projects/rack/) - 1U rack shelf device mounts (Apple TV mount, retention strap, WiiM Amp bracket)
 
 ## Quick Start
 
@@ -30,8 +30,8 @@ just build
 just check
 
 # Render and slice specific project
-just render rack-shelf-apple-tv-mount__rack_shelf_apple_tv_mount
-just slice rack-shelf-apple-tv-mount__rack_shelf_apple_tv_mount
+just render rack__rack_shelf_apple_tv_mount
+just slice rack__rack_shelf_apple_tv_mount
 ```
 
 ## Commands
