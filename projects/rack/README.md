@@ -50,22 +50,25 @@ A minimalist strap alternative that secures the Apple TV directly to the shelf w
 
 ### 3. WiiM Amp Retention Bracket (`wiim_amp_retention_bracket.scad`)
 
-A top-down retention bracket that clamps over the WiiM Amp with snap-fit tabs anchoring through shelf slots.
+A top-down retention bracket that clamps over the WiiM Amp with snap-fit tabs anchoring through shelf slots. Front and back are completely open for port and cable access.
 
 **Features:**
-- Four-sided retention (210mm × 210mm)
-- Large center cutout (150mm × 150mm) for top ventilation
-- Cable openings on front/back walls (160mm wide)
-- Four corner anchor tabs with snap-fit barbs
+- Two-sided retention walls (left/right only, 10mm thick)
+- Front and back completely open for port access
+- Large center cutout (170mm × 190mm) for top ventilation
+- Four anchor tabs at wall corners with snap-fit barbs
+- Tabs extend toward front/back to hook through shelf vent slots
 - Fully parametric via Customizer
 
 **Device Specs (WiiM Amp):**
 - Dimensions: 190mm × 190mm × 43mm
+- 7mm clearance above device (50mm wall height)
 
 **Print Settings:**
 - Material: PETG or ABS recommended (heat tolerance)
 - Layer Height: 0.20mm
 - Infill: 20-30%
+- Perimeters: 3+ on tabs and walls for rigidity
 - Print Orientation: Upside-down (top plate on bed)
 - Supports: None required
 - Print Time: ~4-6 hours
