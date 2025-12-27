@@ -61,8 +61,8 @@ insert_hole_depth = 8; // [6:1:12]
 front_insert_offset = 20; // [10:1:40]
 // Back insert distance from back edge (center of boss)
 back_insert_offset = 12; // [10:1:40]
-// Boss overhang from wall OUTWARD (for slot alignment: 1.5mm gives 213mm = 6 × 35.5mm spacing)
-boss_overhang = 1.5; // [0:0.5:15]
+// Boss overhang from wall OUTWARD (for slot alignment: 5mm gives 220mm = 11 × 20mm spacing)
+boss_overhang = 5; // [0:0.5:15]
 
 /* [Rendering] */
 $fa = 1;
