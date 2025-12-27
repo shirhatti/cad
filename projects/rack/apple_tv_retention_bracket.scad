@@ -211,11 +211,11 @@ module bracket() {
 
 }
 
-// Main model
-// Translated so all geometry is at X >= 0, Y >= 0, Z >= 0 for slicing
+// Main model - in print orientation (top plate on build plate, bosses pointing up)
 // Guard: skip rendering if included by another file (e.g., tests)
 if (!is_undef(RENDER_BRACKET) ? RENDER_BRACKET : true) {
-    // Shift model so left bosses start at X=0 (they overhang to negative X)
-    translate([boss_overhang + boss_diameter/2, 0, 0])
-        bracket();
+    // Rotate 180° around X to flip upside-down, then translate to positive space
+    translate([boss_overhang + boss_diameter/2, bracket_depth, side_wall_height + top_plate_thickness])
+        rotate([180, 0, 0])
+            bracket();
 }
