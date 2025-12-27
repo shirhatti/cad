@@ -25,8 +25,8 @@ bracket_width = 222; // [150:1:350]
 bracket_depth = 222; // [150:1:350]
 // Top plate thickness
 top_plate_thickness = 3; // [2:0.5:5]
-// Side wall height (provides 12mm clearance above 63mm device, minus lip_radius for net clearance)
-side_wall_height = 75; // [30:1:100]
+// Side wall height (device height + 3mm clearance + lip thickness = 63 + 3 + 3 = 69)
+side_wall_height = 69; // [30:1:100]
 // Side wall thickness (same as frame border for strength)
 wall_thickness = 10; // [5:1:20]
 
