@@ -99,15 +99,15 @@ module insert_boss() {
 // This allows the boss to rest on the shelf surface for proper screw clamping
 module boss_flange(y_pos, is_left) {
     boss_embed = 5;
-    flange_height = boss_embed; // Flange at base of wall
+    flange_height = boss_height + boss_embed; // Full height: from boss bottom to wall embed
     flange_width = boss_overhang + boss_diameter / 2; // Extends to support boss center
 
-    // Flange extends from wall base INWARD (toward center/device)
+    // Flange extends from boss bottom up into wall base
     // Left wall: flange goes right (positive X from wall inner edge)
     // Right wall: flange goes left (negative X from wall inner edge)
     translate([is_left ? wall_thickness : -flange_width,
                y_pos - boss_diameter / 2,
-               0])
+               -boss_height])
         cube([flange_width, boss_diameter, flange_height]);
 }
 
