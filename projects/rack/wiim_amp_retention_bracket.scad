@@ -80,10 +80,10 @@ module top_plate() {
 
 // Threaded insert boss with hole for heat-set insert
 // Boss sits flush with wall bottom at Z=0, extends upward
-// Includes countersink to indicate insert location
+// Includes large countersink to clearly indicate insert location
 module insert_boss() {
-    countersink_depth = 2; // Depth of visual indicator
-    countersink_diameter = insert_hole_diameter + 4; // Visible chamfer around hole
+    countersink_depth = 3; // Depth of visual indicator
+    countersink_diameter = boss_diameter - 1; // Nearly full boss width for visibility
 
     difference() {
         // Cylindrical boss - from shelf level (Z=0) up into wall structure
@@ -93,7 +93,7 @@ module insert_boss() {
         translate([0, 0, -0.5])
             cylinder(d = insert_hole_diameter, h = insert_hole_depth + 0.5);
 
-        // Countersink at bottom (Z=0) to indicate insert location
+        // Large countersink at bottom (Z=0) to clearly indicate insert location
         cylinder(d1 = countersink_diameter, d2 = insert_hole_diameter,
                  h = countersink_depth);
     }
