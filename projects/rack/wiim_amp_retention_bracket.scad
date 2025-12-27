@@ -212,8 +212,10 @@ module bracket() {
 }
 
 // Main model
-// Everything sits flush on shelf at Z = 0
+// Translated so all geometry is at X >= 0, Y >= 0, Z >= 0 for slicing
 // Guard: skip rendering if included by another file (e.g., tests)
 if (!is_undef(RENDER_BRACKET) ? RENDER_BRACKET : true) {
-    bracket();
+    // Shift model so left bosses start at X=0 (they overhang to negative X)
+    translate([boss_overhang + boss_diameter/2, 0, 0])
+        bracket();
 }
