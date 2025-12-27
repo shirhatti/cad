@@ -6,10 +6,8 @@ set -euo pipefail
 
 REGISTRY="${REGISTRY:-ghcr.io}"
 REPO="${GITHUB_REPOSITORY:-}"
-# GHCR package name: use repo name with suffix (ghcr.io/owner/repo-renders)
 REPO_NAME="${REPO##*/}"
 REPO_OWNER="${REPO%%/*}"
-PACKAGE_NAME="${REPO_NAME}-renders"
 OPENSCAD_VERSION="${OPENSCAD_VERSION:-$(openscad --version 2>&1 | head -1)}"
 
 # Include OpenSCAD version in cache key to invalidate on upgrades
@@ -49,15 +47,16 @@ FULLNAME="${PROJECT_NAME}__${BASENAME}"
 
 # Compute content hash of the .scad file
 FILE_HASH=$(sha256sum "$SCAD_FILE" | cut -d' ' -f1)
-# Cache tag includes version+hash for content-addressable lookup
-CACHE_TAG="${FULLNAME}-${VERSION_HASH}-${FILE_HASH:0:12}"
+# Cache tag is just version+hash (model name is in the container path)
+CACHE_TAG="${VERSION_HASH}-${FILE_HASH:0:12}"
 
 STL_FILE="${OUTPUT_DIR}/stl/${FULLNAME}.stl"
 PNG_FILE="${OUTPUT_DIR}/preview/${FULLNAME}.png"
 
-OCI_BASE="${REGISTRY}/${REPO_OWNER}/${PACKAGE_NAME}"
+# One container per model: ghcr.io/owner/repo/renders/project/model
+OCI_BASE="${REGISTRY}/${REPO_OWNER}/${REPO_NAME}/renders/${PROJECT_NAME}/${BASENAME}"
 OCI_REF_CACHE="${OCI_BASE}:${CACHE_TAG}"
-OCI_REF_LATEST="${OCI_BASE}:${FULLNAME}"
+OCI_REF_LATEST="${OCI_BASE}:latest"
 
 mkdir -p "${OUTPUT_DIR}/stl" "${OUTPUT_DIR}/preview"
 
@@ -105,12 +104,14 @@ if [[ "${SKIP_CACHE:-0}" != "1" ]]; then
             echo "⚠ Failed to cache ${FULLNAME} (continuing anyway)"
         fi
 
-        # Also push to simple tag (latest version, easy to pull)
-        if oras push "$OCI_REF_LATEST" \
-            --artifact-type application/vnd.openscad.render \
-            "${FULLNAME}.stl:application/sla" \
-            "${FULLNAME}.png:image/png" 2>/dev/null; then
-            echo "✓ Tagged ${FULLNAME} as latest"
+        # Only update 'latest' tag on main branch (PRs shouldn't poison the registry)
+        if [[ "${GITHUB_REF_NAME:-}" == "main" ]]; then
+            if oras push "$OCI_REF_LATEST" \
+                --artifact-type application/vnd.openscad.render \
+                "${FULLNAME}.stl:application/sla" \
+                "${FULLNAME}.png:image/png" 2>/dev/null; then
+                echo "✓ Tagged ${FULLNAME} as latest"
+            fi
         fi
     )
 

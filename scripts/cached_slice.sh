@@ -6,10 +6,8 @@ set -euo pipefail
 
 REGISTRY="${REGISTRY:-ghcr.io}"
 REPO="${GITHUB_REPOSITORY:-}"
-# GHCR package name: use repo name with suffix (ghcr.io/owner/repo-slices)
 REPO_NAME="${REPO##*/}"
 REPO_OWNER="${REPO%%/*}"
-PACKAGE_NAME="${REPO_NAME}-slices"
 
 usage() {
     echo "Usage: $0 <model_name> <artifacts_dir>"
@@ -63,12 +61,16 @@ fi
 SLICER_VERSION=$(orca-slicer --help 2>&1 | head -1 | grep -oP 'v[\d.]+' || echo "unknown")
 SLICER_HASH=$(echo "$SLICER_VERSION" | sha256sum | cut -c1-8)
 
-# Cache tag includes slicer+profiles+content for content-addressable lookup
-CACHE_TAG="${MODEL_NAME}-${SLICER_HASH}-${PROFILES_HASH:0:8}-${STL_HASH:0:12}"
+# Cache tag is just slicer+profiles+content hash (model name is in the container path)
+CACHE_TAG="${SLICER_HASH}-${PROFILES_HASH:0:8}-${STL_HASH:0:12}"
 
-OCI_BASE="${REGISTRY}/${REPO_OWNER}/${PACKAGE_NAME}"
+# Extract project/model from MODEL_NAME (e.g., "rack__retention_strap" -> "rack/retention_strap")
+MODEL_PATH="${MODEL_NAME//__//}"
+
+# One container per model: ghcr.io/owner/repo/slices/project/model
+OCI_BASE="${REGISTRY}/${REPO_OWNER}/${REPO_NAME}/slices/${MODEL_PATH}"
 OCI_REF_CACHE="${OCI_BASE}:${CACHE_TAG}"
-OCI_REF_LATEST="${OCI_BASE}:${MODEL_NAME}"
+OCI_REF_LATEST="${OCI_BASE}:latest"
 
 mkdir -p "${ARTIFACTS_DIR}/gcode" "${ARTIFACTS_DIR}/logs"
 
@@ -110,12 +112,14 @@ if [[ "${SKIP_CACHE:-0}" != "1" ]] && [[ -f "$OUTPUT_FILE" ]]; then
             echo "⚠ Failed to cache slice for ${MODEL_NAME} (continuing anyway)"
         fi
 
-        # Also push to simple tag (latest version, easy to pull)
-        if oras push "$OCI_REF_LATEST" \
-            --artifact-type application/vnd.orcaslicer.slice \
-            "${MODEL_NAME}.3mf:application/vnd.ms-package.3dmanufacturing-3dmodel+xml" \
-            "${MODEL_NAME}.log:text/plain" 2>/dev/null; then
-            echo "✓ Tagged slice ${MODEL_NAME} as latest"
+        # Only update 'latest' tag on main branch (PRs shouldn't poison the registry)
+        if [[ "${GITHUB_REF_NAME:-}" == "main" ]]; then
+            if oras push "$OCI_REF_LATEST" \
+                --artifact-type application/vnd.orcaslicer.slice \
+                "${MODEL_NAME}.3mf:application/vnd.ms-package.3dmanufacturing-3dmodel+xml" \
+                "${MODEL_NAME}.log:text/plain" 2>/dev/null; then
+                echo "✓ Tagged slice ${MODEL_NAME} as latest"
+            fi
         fi
     )
 
