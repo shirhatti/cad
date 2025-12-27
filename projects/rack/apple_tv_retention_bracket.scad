@@ -19,10 +19,10 @@ device_depth = 93; // [80:1:120]
 device_height = 31; // [20:1:50]
 
 /* [Bracket Dimensions] */
-// Overall bracket width (device width + 2 × wall thickness)
-bracket_width = 113; // [100:1:150]
+// Overall bracket width (device + clearance + 2×lip_overhang + 2×wall_thickness)
+bracket_width = 123; // [100:1:150]
 // Overall bracket depth
-bracket_depth = 113; // [100:1:150]
+bracket_depth = 123; // [100:1:150]
 // Top plate thickness
 top_plate_thickness = 3; // [2:0.5:5]
 // Side wall height (provides 11mm clearance above 31mm device, minus lip_radius for net clearance)
@@ -61,8 +61,8 @@ insert_hole_depth = 8; // [6:1:12]
 front_insert_offset = 15; // [10:1:30]
 // Back insert distance from back edge (center of boss)
 back_insert_offset = 15; // [10:1:30]
-// Boss overhang from wall OUTWARD (for slot alignment: 3.5mm gives 120mm = 6 × 20mm spacing)
-boss_overhang = 3.5; // [0:0.5:20]
+// Boss overhang from wall OUTWARD (for slot alignment: 8.5mm gives 140mm = 7 × 20mm spacing)
+boss_overhang = 8.5; // [0:0.5:20]
 
 /* [Rendering] */
 $fa = 1;
