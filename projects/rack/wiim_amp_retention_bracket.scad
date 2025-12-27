@@ -79,17 +79,13 @@ module top_plate() {
 }
 
 // Threaded insert boss with hole for heat-set insert
-// Boss extends from below the wall up into the wall base for structural strength
+// Boss sits flush with wall bottom at Z=0, extends upward
 module insert_boss() {
-    // Total boss height: extends below wall + embedded portion in wall
-    boss_embed = 5; // How far boss extends up into wall
-    total_height = boss_height + boss_embed;
-
     difference() {
-        // Cylindrical boss - extends from below wall into wall base
-        cylinder(d = boss_diameter, h = total_height);
+        // Cylindrical boss - from shelf level (Z=0) up into wall structure
+        cylinder(d = boss_diameter, h = boss_height);
 
-        // Insert hole (from bottom, goes up but not through)
+        // Insert hole (from bottom at Z=0, for screw from below shelf)
         translate([0, 0, -0.5])
             cylinder(d = insert_hole_diameter, h = insert_hole_depth + 0.5);
     }
@@ -97,26 +93,23 @@ module insert_boss() {
 
 // Flange to support insert boss extending OUTWARD (away from device)
 // Boss rests on shelf surface, screw from below creates clamping force
+// Flange extends full wall height to connect boss to wall structure
 module boss_flange(y_pos, is_left) {
-    boss_embed = 5;
-    flange_height = boss_height + boss_embed; // Full height: from boss bottom to wall embed
     flange_width = boss_overhang + boss_diameter / 2; // Extends to support boss center
 
     // Flange extends from wall OUTWARD (away from device)
+    // Full height from Z=0 (shelf) to wall_frame_bottom (where solid wall starts)
     // Left wall: flange goes left (negative X)
     // Right wall: flange goes right (positive X from wall outer edge)
     translate([is_left ? -flange_width : wall_thickness,
                y_pos - boss_diameter / 2,
-               -boss_height])
-        cube([flange_width, boss_diameter, flange_height]);
+               0])
+        cube([flange_width, boss_diameter, side_wall_height]);
 }
 
 // Side wall with insert bosses on OUTWARD flanges at front and back corners
-// Bosses extend outward (over shelf vent area) and down (rest on shelf surface)
+// Bosses extend outward (over shelf vent area), everything sits flush on shelf at Z=0
 module side_wall(is_left) {
-    // Wall is oriented along Y axis (front to back)
-    boss_embed = 5; // Must match value in insert_boss()
-
     // X position for boss center (overhangs OUTWARD away from device)
     // Left wall: boss is to the left of wall (-overhang)
     // Right wall: boss is to the right of wall (wall_thickness + overhang)
@@ -141,14 +134,14 @@ module side_wall(is_left) {
                       side_wall_height - wall_frame_bottom - wall_frame_top]);
         }
 
-        // Front flange and insert boss (extending OUTWARD and DOWN)
+        // Front flange and insert boss (extending OUTWARD, flush with wall bottom)
         boss_flange(front_insert_offset, is_left);
-        translate([boss_x, front_insert_offset, -boss_height])
+        translate([boss_x, front_insert_offset, 0])
             insert_boss();
 
-        // Back flange and insert boss (extending OUTWARD and DOWN)
+        // Back flange and insert boss (extending OUTWARD, flush with wall bottom)
         boss_flange(bracket_depth - back_insert_offset, is_left);
-        translate([boss_x, bracket_depth - back_insert_offset, -boss_height])
+        translate([boss_x, bracket_depth - back_insert_offset, 0])
             insert_boss();
     }
 }
@@ -169,6 +162,5 @@ module bracket() {
 }
 
 // Main model
-// Position so bottom of insert bosses is at Z = 0
-translate([0, 0, boss_height])
-    bracket();
+// Everything sits flush on shelf at Z = 0
+bracket();
