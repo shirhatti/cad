@@ -28,6 +28,8 @@ slot_columns = 19; // [10:1:25]
 slot_rows = 3; // [1:1:6]
 // X-axis spacing between slot centers
 slot_spacing_x = 20; // [15:1:30]
+// Y-axis spacing between row centers
+slot_spacing_y = 75; // [50:5:100]
 
 /* [Rendering] */
 $fa = 2;
@@ -53,9 +55,8 @@ module vented_shelf() {
     x_span = (slot_columns - 1) * slot_spacing_x; // 360mm
     start_x = (shelf_width - x_span) / 2 - slot_width / 2;
 
-    // Y-axis: 3 rows centered in shelf_depth, evenly distributed
-    y_span = shelf_depth - slot_length - 20; // leave ~10mm margin top/bottom
-    slot_spacing_y = (slot_rows > 1) ? y_span / (slot_rows - 1) : 0;
+    // Y-axis: 3 rows centered in shelf_depth
+    y_span = (slot_rows - 1) * slot_spacing_y; // 150mm for 3 rows at 75mm spacing
     start_y = (shelf_depth - y_span) / 2 - slot_length / 2;
 
     color(shelf_color)
