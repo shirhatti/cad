@@ -36,6 +36,12 @@ cutout_width = 73; // [50:1:100]
 // Depth of center ventilation cutout
 cutout_depth = 93; // [50:1:100]
 
+/* [Retention Lip] */
+// How far the lip extends inward over the device
+lip_overhang = 4; // [2:1:10]
+// Radius of the curved lip profile
+lip_radius = 4; // [2:1:8]
+
 /* [Threaded Insert Bosses] */
 // Insert size: M4 or M5
 insert_size = "M4"; // [M4, M5]
@@ -96,6 +102,29 @@ module counterbore_cut() {
     counterbore_depth = 1; // Subtle step to indicate insert location
     counterbore_diameter = boss_diameter - 2; // Step around insert hole
     cylinder(d = counterbore_diameter, h = counterbore_depth);
+}
+
+// Curved retention lip profile (2D cross-section)
+// Creates a quarter-circle that curves down and inward
+module lip_profile() {
+    difference() {
+        square([lip_overhang, lip_radius]);
+        translate([lip_overhang, lip_radius])
+            circle(r = lip_radius);
+    }
+}
+
+// Retention lip that extends along the wall
+// Positioned at the top inner edge of each wall, curving inward over the device
+module retention_lip(length, is_left) {
+    // Position at top of wall, extending inward
+    // Left wall: lip extends to the right (positive X)
+    // Right wall: lip extends to the left (negative X)
+    translate([is_left ? wall_thickness : -lip_overhang, 0, side_wall_height])
+        rotate([90, 0, 0])
+        rotate([0, 90, 0])
+        linear_extrude(height = length)
+            lip_profile();
 }
 
 // Flange to support insert boss extending OUTWARD (away from device)
@@ -175,6 +204,15 @@ module bracket() {
     // Right side wall (at X = bracket_width - wall_thickness, bosses overhang to the right)
     translate([bracket_width - wall_thickness, 0, 0])
         side_wall(is_left = false);
+
+    // Curved retention lips along inner edges of walls
+    // Left wall lip (extends inward to the right)
+    translate([0, bracket_depth, 0])
+        retention_lip(bracket_depth, is_left = true);
+
+    // Right wall lip (extends inward to the left)
+    translate([bracket_width, bracket_depth, 0])
+        retention_lip(bracket_depth, is_left = false);
 }
 
 // Main model
