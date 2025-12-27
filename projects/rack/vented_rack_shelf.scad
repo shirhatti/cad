@@ -18,10 +18,10 @@ shelf_thickness = 1.2; // [1:0.1:2]
 /* [Ventilation Slot Pattern] */
 // Slot length (along Y-axis)
 slot_length = 35.5; // [30:0.5:45]
-// Slot width (along X-axis)
-slot_width = 6; // [5:0.5:8]
-// Slot corner radius
-slot_radius = 2; // [1:0.5:3]
+// Slot width (along X-axis) - also the diameter of end curves
+slot_width = 5.5; // [4:0.5:8]
+// Slot corner radius (half of slot_width for full round ends)
+slot_radius = 2.75; // [1:0.25:4]
 // Number of columns (X-axis)
 slot_columns = 19; // [10:1:25]
 // Number of rows (Y-axis)
