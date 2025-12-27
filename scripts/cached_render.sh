@@ -53,8 +53,8 @@ CACHE_TAG="${VERSION_HASH}-${FILE_HASH:0:12}"
 STL_FILE="${OUTPUT_DIR}/stl/${FULLNAME}.stl"
 PNG_FILE="${OUTPUT_DIR}/preview/${FULLNAME}.png"
 
-# One container per model: ghcr.io/owner/repo/renders/project__model
-OCI_BASE="${REGISTRY}/${REPO_OWNER}/${REPO_NAME}/renders/${FULLNAME}"
+# One container per model: ghcr.io/owner/repo/renders/project/model
+OCI_BASE="${REGISTRY}/${REPO_OWNER}/${REPO_NAME}/renders/${PROJECT_NAME}/${BASENAME}"
 OCI_REF_CACHE="${OCI_BASE}:${CACHE_TAG}"
 OCI_REF_LATEST="${OCI_BASE}:latest"
 

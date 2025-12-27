@@ -64,8 +64,11 @@ SLICER_HASH=$(echo "$SLICER_VERSION" | sha256sum | cut -c1-8)
 # Cache tag is just slicer+profiles+content hash (model name is in the container path)
 CACHE_TAG="${SLICER_HASH}-${PROFILES_HASH:0:8}-${STL_HASH:0:12}"
 
-# One container per model: ghcr.io/owner/repo/slices/project__model
-OCI_BASE="${REGISTRY}/${REPO_OWNER}/${REPO_NAME}/slices/${MODEL_NAME}"
+# Extract project/model from MODEL_NAME (e.g., "rack__retention_strap" -> "rack/retention_strap")
+MODEL_PATH="${MODEL_NAME//__//}"
+
+# One container per model: ghcr.io/owner/repo/slices/project/model
+OCI_BASE="${REGISTRY}/${REPO_OWNER}/${REPO_NAME}/slices/${MODEL_PATH}"
 OCI_REF_CACHE="${OCI_BASE}:${CACHE_TAG}"
 OCI_REF_LATEST="${OCI_BASE}:latest"
 
