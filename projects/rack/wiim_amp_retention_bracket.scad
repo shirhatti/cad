@@ -16,7 +16,7 @@ device_width = 190; // [100:1:300]
 // Depth of the WiiM Amp
 device_depth = 190; // [100:1:300]
 // Height of the WiiM Amp
-device_height = 43; // [20:1:100]
+device_height = 63; // [20:1:100]
 
 /* [Bracket Dimensions] */
 // Overall bracket width (device width + 2 × wall thickness)
@@ -25,8 +25,8 @@ bracket_width = 210; // [150:1:350]
 bracket_depth = 210; // [150:1:350]
 // Top plate thickness
 top_plate_thickness = 3; // [2:0.5:5]
-// Side wall height (provides 7mm clearance above 43mm device)
-side_wall_height = 50; // [30:1:80]
+// Side wall height (provides 7mm clearance above 63mm device)
+side_wall_height = 70; // [30:1:100]
 // Side wall thickness (same as frame border for strength)
 wall_thickness = 10; // [5:1:20]
 
