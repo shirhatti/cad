@@ -9,6 +9,9 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
     - uses: actions/checkout@v4
@@ -73,6 +76,23 @@ jobs:
     - name: Create OrcaSlicer symlink
       run: sudo ln -sf /opt/orcaslicer/AppRun /usr/local/bin/orca-slicer
 
+    - name: Cache ORAS CLI
+      id: cache-oras
+      uses: actions/cache@v4
+      with:
+        path: /usr/local/bin/oras
+        key: oras-1.2.2-linux-amd64
+
+    - name: Install ORAS CLI
+      if: steps.cache-oras.outputs.cache-hit != 'true'
+      run: |
+        curl -sLO https://github.com/oras-project/oras/releases/download/v1.2.2/oras_1.2.2_linux_amd64.tar.gz
+        tar -xzf oras_1.2.2_linux_amd64.tar.gz oras
+        sudo mv oras /usr/local/bin/
+
+    - name: Login to GHCR
+      run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
+
     - name: Update justfile for Linux paths
       run: |
         # Replace brew backtick expression (evaluated at parse time, fails on Linux)
@@ -87,6 +107,7 @@ jobs:
         just --version
         openscad --version
         xvfb-run orca-slicer --help | head -5
+        oras version
 
     - name: Sync Python dependencies
       run: uv sync
@@ -97,36 +118,25 @@ jobs:
     - name: Validate models render
       run: xvfb-run just check
 
-    - name: Render models
+    - name: Render models (with GHCR caching)
+      env:
+        GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
-        mkdir -p artifacts/stl
+        chmod +x scripts/cached_render.sh
         find projects -name "*.scad" -type f | while read -r f; do
-          project_name=$(dirname "$f" | sed 's|projects/||')
-          basename=$(basename "$f" .scad)
-          out="artifacts/stl/${project_name}__${basename}.stl"
-          echo "Rendering $f -> $out"
-          xvfb-run openscad -o "$out" "$f"
+          scripts/cached_render.sh "$f" artifacts
         done
 
-    - name: Render preview images
+    - name: Slice models (with GHCR caching)
+      env:
+        GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
-        mkdir -p artifacts/preview
-        find projects -name "*.scad" -type f | while read -r f; do
-          project_name=$(dirname "$f" | sed 's|projects/||')
-          basename=$(basename "$f" .scad)
-          out="artifacts/preview/${project_name}__${basename}.png"
-          echo "Rendering preview $f -> $out"
-          xvfb-run openscad -o "$out" --autocenter --viewall --camera=0,0,0,55,0,25,500 "$f"
-        done
-
-    - name: Slice models
-      run: |
+        chmod +x scripts/cached_slice.sh
         find projects -name "*.scad" -type f | while read -r model; do
           project_name=$(dirname "$model" | sed 's|projects/||')
           basename=$(basename "$model" .scad)
           fullname="${project_name}__${basename}"
-          echo "Slicing $fullname..."
-          xvfb-run just slice "$fullname"
+          scripts/cached_slice.sh "$fullname" artifacts
         done
 
     - name: Upload STL models
