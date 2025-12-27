@@ -2,6 +2,9 @@
 //
 // A top-down retention bracket that secures a WiiM Amp to a vented rack shelf
 // by clamping over the device and anchoring through the shelf's ventilation slots.
+//
+// PRINT ORIENTATION: This model should be printed upside-down (top plate on build
+// plate) for best results. Rotate 180° around X axis in your slicer before printing.
 
 /* [Device Dimensions] */
 // Width of the WiiM Amp
@@ -87,14 +90,16 @@ module side_wall(length, with_cable_opening = false) {
 }
 
 module anchor_tab() {
-    // Main tab body
-    cube([tab_width, tab_length, tab_thickness]);
+    union() {
+        // Main tab body
+        cube([tab_width, tab_length, tab_thickness]);
 
-    // Snap-fit barb on underside
-    translate([tab_width / 2 - barb_length / 2,
-               tab_length - barb_length,
-               -barb_height])
-        cube([barb_length, barb_length, barb_height]);
+        // Snap-fit barb on underside
+        translate([tab_width / 2 - barb_length / 2,
+                   tab_length - barb_length,
+                   -barb_height])
+            cube([barb_length, barb_length, barb_height]);
+    }
 }
 
 module side_wall_with_tabs(length, tab_positions) {
@@ -142,4 +147,6 @@ module bracket() {
 }
 
 // Main model
+// Move up by barb_height to ensure all geometry is at Z >= 0
+translate([0, 0, barb_height])
 bracket();
