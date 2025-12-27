@@ -51,10 +51,7 @@ test:
     while IFS= read -r -d '' test_file; do
         count=$((count + 1))
         echo "Running: $test_file"
-        # Use temp file with .stl extension (OpenSCAD requires valid suffix)
-        tmp_out=$(mktemp --suffix=.stl)
-        trap "rm -f '$tmp_out'" EXIT
-        if output=$("$openscad_bin" --hardwarnings -o "$tmp_out" "$test_file" 2>&1); then
+        if output=$("$openscad_bin" --hardwarnings --export-format csg -o /dev/null "$test_file" 2>&1); then
             # Check for PASS messages and any assertion failures in output
             if echo "$output" | grep -q "FAIL:"; then
                 echo "  ✗ FAILED (assertion)"
@@ -69,7 +66,6 @@ test:
             echo "$output" | tail -5 | sed 's/^/    /'
             failed=$((failed + 1))
         fi
-        rm -f "$tmp_out"
     done < <(find projects -name "*_test.scad" -type f -print0)
 
     echo ""
@@ -101,10 +97,7 @@ test-project project:
     while IFS= read -r -d '' test_file; do
         count=$((count + 1))
         echo "Running: $test_file"
-        # Use temp file with .stl extension (OpenSCAD requires valid suffix)
-        tmp_out=$(mktemp --suffix=.stl)
-        trap "rm -f '$tmp_out'" EXIT
-        if output=$("$openscad_bin" --hardwarnings -o "$tmp_out" "$test_file" 2>&1); then
+        if output=$("$openscad_bin" --hardwarnings --export-format csg -o /dev/null "$test_file" 2>&1); then
             if echo "$output" | grep -q "FAIL:"; then
                 echo "  ✗ FAILED (assertion)"
                 echo "$output" | grep "FAIL:" | sed 's/^/    /'
@@ -118,7 +111,6 @@ test-project project:
             echo "$output" | tail -5 | sed 's/^/    /'
             failed=$((failed + 1))
         fi
-        rm -f "$tmp_out"
     done < <(find "$project_dir" -name "*_test.scad" -type f -print0)
 
     echo ""
