@@ -16,6 +16,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import click
 import tree_sitter as ts
 import tree_sitter_openscad as ts_openscad
 
@@ -403,11 +404,12 @@ def lint_directory(dirpath: Path, recursive: bool = True) -> list[LintResult]:
     - *_test.scad (unit test files)
     - *_constants.scad (shared constants/library files)
     - *_reference.scad (visualization/reference models, not for printing)
+    - *_lib.scad (shared library modules)
     """
     results = []
 
     # Patterns for non-customizable files
-    exclude_suffixes = ("_test.scad", "_constants.scad", "_reference.scad")
+    exclude_suffixes = ("_test.scad", "_constants.scad", "_reference.scad", "_lib.scad")
 
     pattern = "**/*.scad" if recursive else "*.scad"
     for scad_file in sorted(dirpath.glob(pattern)):
@@ -446,11 +448,8 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    # ANSI color codes
-    if args.no_color or not sys.stdout.isatty():
-        RED, YELLOW, GREEN, RESET = "", "", "", ""
-    else:
-        RED, YELLOW, GREEN, RESET = "\033[91m", "\033[93m", "\033[92m", "\033[0m"
+    # Disable color if requested
+    color = not args.no_color
 
     all_results: list[LintResult] = []
 
@@ -460,7 +459,7 @@ def main() -> int:
         elif path.is_dir():
             all_results.extend(lint_directory(path))
         else:
-            print(f"{RED}Error: {path} is not a file or directory{RESET}", file=sys.stderr)
+            click.secho(f"Error: {path} is not a file or directory", fg="red", err=True, color=color)
             return 1
 
     # Print results
@@ -469,12 +468,12 @@ def main() -> int:
 
     for result in all_results:
         for error in result.errors:
-            print(f"{RED}{error}{RESET}")
+            click.secho(str(error), fg="red", color=color)
             total_errors += 1
 
         if not args.quiet:
-            for error in result.warnings:
-                print(f"{YELLOW}{error}{RESET}")
+            for warning in result.warnings:
+                click.secho(str(warning), fg="yellow", color=color)
                 total_warnings += 1
 
     # Summary
@@ -486,12 +485,12 @@ def main() -> int:
             failed = sum(1 for r in all_results if r.errors or r.warnings)
             passed = len(all_results) - failed
 
-        print()
+        click.echo()
         if failed == 0:
-            print(f"{GREEN}All {len(all_results)} file(s) passed Customizer linting{RESET}")
+            click.secho(f"All {len(all_results)} file(s) passed Customizer linting", fg="green", color=color)
         else:
-            print(f"{RED}{failed} file(s) failed, {passed} passed{RESET}")
-            print(f"  {total_errors} error(s), {total_warnings} warning(s)")
+            click.secho(f"{failed} file(s) failed, {passed} passed", fg="red", color=color)
+            click.echo(f"  {total_errors} error(s), {total_warnings} warning(s)")
 
     if args.strict:
         return 1 if (total_errors + total_warnings) > 0 else 0

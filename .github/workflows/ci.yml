@@ -31,138 +31,55 @@ jobs:
         packages: openscad xvfb gstreamer1.0-plugins-base libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 libjavascriptcoregtk-6.0-1
         version: 1.1
 
-    - name: Install just
-      run: |
-        JUST_VERSION=$(curl -s https://api.github.com/repos/casey/just/releases/latest | jq -r .tag_name)
-        wget -qO- "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | \
-        sudo tar xzf - -C /usr/local/bin just
-
     - name: Install uv
       uses: astral-sh/setup-uv@v4
       with:
         version: "latest"
-
-    - name: Cache uv dependencies
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/uv
-        key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-        restore-keys: |
-          uv-${{ runner.os }}-
+        enable-cache: true
 
     - name: Install OrcaSlicer
       run: |
-        wget "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v2.3.1/OrcaSlicer_Linux_AppImage_Ubuntu2404_V2.3.1.AppImage" -O OrcaSlicer.AppImage
+        wget -q "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v2.3.1/OrcaSlicer_Linux_AppImage_Ubuntu2404_V2.3.1.AppImage" -O OrcaSlicer.AppImage
         chmod +x OrcaSlicer.AppImage
         ./OrcaSlicer.AppImage --appimage-extract >/dev/null 2>&1
         sudo rm -rf /opt/orcaslicer
         sudo mv squashfs-root /opt/orcaslicer
-
-    - name: Create OrcaSlicer symlink
-      run: sudo ln -sf /opt/orcaslicer/AppRun /usr/local/bin/orca-slicer
-
-    - name: Install ORAS CLI
-      run: |
-        ORAS_VERSION=$(curl -s https://api.github.com/repos/oras-project/oras/releases/latest | jq -r .tag_name | sed 's/^v//')
-        curl -sLO "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz"
-        tar -xzf "oras_${ORAS_VERSION}_linux_amd64.tar.gz" oras
-        sudo mv oras /usr/local/bin/
-
-    - name: Login to GHCR
-      run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
-
-    - name: Update justfile for Linux paths
-      run: |
-        # Replace brew backtick expression (evaluated at parse time, fails on Linux)
-        sed -i 's|_openscad_app := .*|_openscad_app := ""|' justfile
-        # Update OpenSCAD binary path
-        sed -i 's|_openscad_bin := .*|_openscad_bin := "openscad"|' justfile
-        # Update OrcaSlicer binary path
-        sed -i 's|_orca_slicer_bin := .*|_orca_slicer_bin := "orca-slicer"|' justfile
-
-    - name: Verify tools
-      run: |
-        just --version
-        openscad --version
-        xvfb-run orca-slicer --help | head -5
-        oras version
+        sudo ln -sf /opt/orcaslicer/AppRun /usr/local/bin/orca-slicer
 
     - name: Sync Python dependencies
       run: uv sync
 
     - name: Lint OpenSCAD files
-      run: uv run python -m scripts.customizer_lint projects/
+      run: uv run scad-tools lint
 
     - name: Run OpenSCAD unit tests
-      run: xvfb-run just test
+      run: uv run scad-tools test
 
     - name: Validate models render
-      run: xvfb-run just check
+      run: uv run scad-tools check
 
-    - name: Render models (with GHCR caching)
+    - name: Render models
       env:
         GITHUB_REPOSITORY: ${{ github.repository }}
-      run: |
-        chmod +x scripts/cached_render.sh
-        find projects -name "*.scad" -type f \
-          ! -name "*_test.scad" \
-          ! -name "*_constants.scad" \
-          ! -name "*_reference.scad" | while read -r f; do
-          scripts/cached_render.sh "$f" artifacts
-        done
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
+      run: uv run scad-tools render
 
-    - name: Slice models (with GHCR caching)
-      continue-on-error: true
+    - name: Slice models
       env:
         GITHUB_REPOSITORY: ${{ github.repository }}
-      run: |
-        chmod +x scripts/cached_slice.sh
-        find projects -name "*.scad" -type f \
-          ! -name "*_test.scad" \
-          ! -name "*_constants.scad" \
-          ! -name "*_reference.scad" | while read -r model; do
-          project_name=$(dirname "$model" | sed 's|projects/||')
-          basename=$(basename "$model" .scad)
-          fullname="${project_name}__${basename}"
-          scripts/cached_slice.sh "$fullname" artifacts || echo "Warning: Failed to slice $fullname"
-        done
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
+      run: uv run scad-tools slice
 
-    - name: Upload STL models
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: stl-models
-        path: artifacts/stl/*.stl
+        name: build-artifacts
+        path: |
+          artifacts/stl/*.stl
+          artifacts/preview/*.png
+          artifacts/gcode/*.3mf
+          artifacts/logs/*.log
         retention-days: 7
-
-    - name: Upload preview images
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: preview-images
-        path: artifacts/preview/*.png
-        retention-days: 7
-
-    - name: Upload sliced 3MF files
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: sliced-3mf
-        path: artifacts/gcode/*.3mf
-        retention-days: 7
-
-    - name: Upload logs
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: build-logs
-        path: artifacts/logs/*.log
-        retention-days: 7
-
-    - name: Check for errors
-      run: |
-        if grep -r "error when validate" artifacts/logs/ 2>/dev/null; then
-          echo "❌ Found validation errors in slicing logs"
-          exit 1
-        fi
-        echo "✅ All models rendered and sliced successfully"

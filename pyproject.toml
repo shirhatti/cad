@@ -4,11 +4,14 @@ version = "0.1.0"
 description = "OpenSCAD CAD project tools including MakerBot Customizer linting"
 requires-python = ">=3.11"
 dependencies = [
+    "click>=8.3.1",
+    "oras>=0.2.38",
     "tree-sitter>=0.25.2",
     "tree-sitter-openscad",
 ]
 
 [project.scripts]
+scad-tools = "scripts.scad_tools:cli"
 customizer-lint = "scripts.customizer_lint:main"
 
 [build-system]
@@ -25,3 +28,9 @@ dev = [
 
 [tool.uv.sources]
 tree-sitter-openscad = { git = "https://github.com/openscad/tree-sitter-openscad" }
+
+[tool.scad-tools.slice]
+# Models excluded from slicing with reasons
+# Format: "path/to/model.scad" = "reason"
+[tool.scad-tools.slice.exclude]
+"rack/wiim_amp_retention_bracket.scad" = "Too large for Bambu A1 build plate (256x256mm)"
