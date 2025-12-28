@@ -12,6 +12,8 @@ Usage:
     uv run python -m scripts.scad_tools render        # Render all models
 """
 
+import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -25,6 +27,46 @@ EXCLUDE_SUFFIXES = {
     "reference": "_reference.scad",  # Visualization-only models
     "lib": "_lib.scad",         # Shared library modules
 }
+
+
+def find_openscad() -> str:
+    """
+    Find OpenSCAD binary, checking platform-specific locations.
+
+    Search order:
+    1. macOS: Homebrew cask install location
+    2. PATH: 'openscad' command
+    """
+    # macOS: Check Homebrew cask location
+    if sys.platform == "darwin":
+        try:
+            result = subprocess.run(
+                ["brew", "info", "--cask", "openscad", "--json=v2"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            info = json.loads(result.stdout)
+            app_name = None
+            for artifact in info["casks"][0].get("artifacts", []):
+                if isinstance(artifact, dict) and "app" in artifact:
+                    app_name = artifact["app"][0]
+                    break
+            if app_name:
+                openscad_bin = Path("/Applications") / app_name / "Contents/MacOS/OpenSCAD"
+                if openscad_bin.exists():
+                    return str(openscad_bin)
+        except (subprocess.CalledProcessError, json.JSONDecodeError, KeyError, IndexError):
+            pass
+
+    # Fall back to PATH
+    openscad = shutil.which("openscad")
+    if openscad:
+        return openscad
+
+    raise click.ClickException(
+        "OpenSCAD not found. Install from https://openscad.org/downloads.html"
+    )
 
 
 def find_scad_files(
@@ -174,12 +216,13 @@ def lint(ctx: click.Context, strict: bool, quiet: bool) -> None:
 
 @cli.command()
 @click.option("--output-dir", type=click.Path(path_type=Path), default=Path("artifacts"))
-@click.option("--openscad", default="openscad", help="OpenSCAD binary path")
+@click.option("--openscad", default=None, help="OpenSCAD binary path (auto-detected if not set)")
 @click.option("--xvfb", is_flag=True, help="Run under xvfb-run")
 @click.pass_context
-def render(ctx: click.Context, output_dir: Path, openscad: str, xvfb: bool) -> None:
+def render(ctx: click.Context, output_dir: Path, openscad: str | None, xvfb: bool) -> None:
     """Render all models to STL."""
     base_path = ctx.obj["base_path"]
+    openscad = openscad or find_openscad()
     files = find_scad_files(base_path)
 
     stl_dir = output_dir / "stl"
@@ -211,12 +254,13 @@ def render(ctx: click.Context, output_dir: Path, openscad: str, xvfb: bool) -> N
 
 
 @cli.command()
-@click.option("--openscad", default="openscad", help="OpenSCAD binary path")
+@click.option("--openscad", default=None, help="OpenSCAD binary path (auto-detected if not set)")
 @click.option("--xvfb", is_flag=True, help="Run under xvfb-run")
 @click.pass_context
-def check(ctx: click.Context, openscad: str, xvfb: bool) -> None:
+def check(ctx: click.Context, openscad: str | None, xvfb: bool) -> None:
     """Validate all models render without errors."""
     base_path = ctx.obj["base_path"]
+    openscad = openscad or find_openscad()
     files = find_scad_files(base_path)
 
     failed = []
@@ -242,12 +286,13 @@ def check(ctx: click.Context, openscad: str, xvfb: bool) -> None:
 
 
 @cli.command()
-@click.option("--openscad", default="openscad", help="OpenSCAD binary path")
+@click.option("--openscad", default=None, help="OpenSCAD binary path (auto-detected if not set)")
 @click.option("--xvfb", is_flag=True, help="Run under xvfb-run")
 @click.pass_context
-def test(ctx: click.Context, openscad: str, xvfb: bool) -> None:
+def test(ctx: click.Context, openscad: str | None, xvfb: bool) -> None:
     """Run OpenSCAD unit tests."""
     base_path = ctx.obj["base_path"]
+    openscad = openscad or find_openscad()
     files = find_scad_files(base_path, only_tests=True)
 
     if not files:

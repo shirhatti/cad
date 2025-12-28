@@ -148,7 +148,7 @@ _run_openscad := "\"" + _openscad_bin + "\" \"$@\" 2>/dev/null"
 
 # Build all .scad files to .stl (searches projects subdirectories)
 build: _ensure-uv
-    uv run python -m scripts.scad_tools render --openscad "{{_openscad_bin}}"
+    uv run python -m scripts.scad_tools render
 
 # Render a specific file to STL
 render file:
@@ -224,7 +224,7 @@ clean:
 
 # Validate models render without errors (catches manifold/geometry issues)
 check: _ensure-uv
-    uv run python -m scripts.scad_tools check --openscad "{{_openscad_bin}}"
+    uv run python -m scripts.scad_tools check
 
 # Export high-quality render (slower, better quality)
 render-hq file:
