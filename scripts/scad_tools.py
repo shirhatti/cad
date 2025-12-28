@@ -188,7 +188,10 @@ def oras_pull(oci_ref: str, output_dir: Path, registry: str = "ghcr.io") -> bool
         client = get_oras_client(registry)
         client.pull(target=oci_ref, outdir=str(output_dir))
         return True
-    except Exception:
+    except Exception as e:
+        # Log the actual error for debugging
+        if os.environ.get("DEBUG"):
+            click.echo(f"ORAS pull failed: {e}", err=True)
         return False
 
 
@@ -209,9 +212,21 @@ def oras_push(
     """
     try:
         client = get_oras_client(registry)
-        client.push(files=files, target=oci_ref)
+        # oras-py needs to run from the directory containing the files
+        # and files should be relative paths
+        if files:
+            work_dir = Path(files[0]).parent
+            rel_files = [Path(f).name for f in files]
+            original_dir = os.getcwd()
+            try:
+                os.chdir(work_dir)
+                client.push(files=rel_files, target=oci_ref)
+            finally:
+                os.chdir(original_dir)
         return True
-    except Exception:
+    except Exception as e:
+        # Log the actual error for debugging
+        click.echo(f"ORAS push failed: {e}", err=True)
         return False
 
 
