@@ -42,20 +42,23 @@ module lib_rounded_rect(size, radius) {
 // ============================================================
 
 // Top plate with ventilation cutout and retention lip
-module _lib_top_plate(bw, cavity, lip_inner, lip_th, plate_th, radius) {
+// Outer boundary is rectangular to connect with side walls
+// Inner boundary (retention lip) is a squircle
+module _lib_top_plate(bw, cavity, lip_inner, lip_th, plate_th, radius, wall_th) {
     bd = cavity;  // No walls front/back
 
     difference() {
-        translate([bw/2, bd/2, 0])
-            linear_extrude(height = plate_th)
-            lib_rounded_rect(cavity, radius);
+        // Outer boundary: full rectangle to connect with side walls
+        translate([0, 0, 0])
+            cube([bw, bd, plate_th]);
 
+        // Inner cutout: squircle shape for retention lip
         translate([bw/2, bd/2, -0.5])
             linear_extrude(height = plate_th + 1)
             lib_rounded_rect(lip_inner, radius);
     }
 
-    // Retention lip hanging down
+    // Retention lip hanging down (squircle shape)
     translate([0, 0, -lip_th])
     difference() {
         translate([bw/2, bd/2, 0])
@@ -155,7 +158,7 @@ module retention_bracket(
 
     translate([0, 0, wh])
         _lib_top_plate(bw, cavity_size, lip_inner, lip_thickness,
-                       top_plate_thickness, corner_radius);
+                       top_plate_thickness, corner_radius, wall_thickness);
 
     _lib_side_wall(true, bd, wh, wall_thickness,
                    boss_overhang, boss_diameter, boss_height,
