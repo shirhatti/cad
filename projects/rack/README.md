@@ -28,8 +28,13 @@ A top-down retention bracket that clamps over the Apple TV 4K and secures to the
 - 7mm clearance above device (38mm wall height)
 
 **Hardware Required:**
-- 4× M4 or M5 heat-set threaded inserts (6-8mm length)
+- 4× M4 or M5 heat-set threaded inserts (4-8mm length)
 - 4× M4 or M5 screws, 12-16mm length (socket head or pan head)
+
+**Heat-Set Insert Specs (M4×4×6):**
+- Bore diameter: 5.8mm
+- Bore depth: 4.5-5mm
+- Install: Soldering iron at 220-250°C, press slowly until seated
 
 **Print Settings:**
 - Material: PETG or ABS recommended (heat tolerance)
@@ -57,8 +62,13 @@ A top-down retention bracket that clamps over the WiiM Amp and secures to the sh
 - 7mm clearance above device (70mm wall height)
 
 **Hardware Required:**
-- 4× M4 or M5 heat-set threaded inserts (6-8mm length)
+- 4× M4 or M5 heat-set threaded inserts (4-8mm length)
 - 4× M4 or M5 screws, 12-16mm length (socket head or pan head)
+
+**Heat-Set Insert Specs (M4×4×6):**
+- Bore diameter: 5.8mm
+- Bore depth: 4.5-5mm
+- Install: Soldering iron at 220-250°C, press slowly until seated
 
 **Print Settings:**
 - Material: PETG or ABS recommended (heat tolerance)
