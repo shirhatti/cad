@@ -6,13 +6,15 @@ Single source of truth for file discovery, rendering, linting, and other operati
 Replaces scattered find commands in justfile and CI with consistent exclusion logic.
 
 Usage:
-    uv run scad-tools list          # List renderable models
-    uv run scad-tools list --tests  # List test files
-    uv run scad-tools lint          # Lint all models
-    uv run scad-tools render        # Render all models to STL + PNG
-    uv run scad-tools slice         # Slice all STL to 3MF
-    uv run scad-tools check         # Validate models render
-    uv run scad-tools test          # Run unit tests
+    uv run scad-tools list            # List renderable models
+    uv run scad-tools list --tests    # List test files
+    uv run scad-tools lint            # Lint all models
+    uv run scad-tools render          # Render all models to STL + PNG
+    uv run scad-tools render-file F   # Render single file
+    uv run scad-tools slice           # Slice all STL to 3MF
+    uv run scad-tools check           # Validate models render
+    uv run scad-tools test            # Run unit tests
+    uv run scad-tools gui FILE        # Open in OpenSCAD GUI
 
 Environment variables for GHCR caching (auto-enabled in CI):
     GITHUB_REPOSITORY    - Owner/repo for cache (e.g., "owner/repo")
@@ -484,6 +486,37 @@ def render(ctx: click.Context, output_dir: Path, openscad: str | None) -> None:
         sys.exit(1)
 
     click.echo(f"\n✓ Rendered {len(files)} model(s) to {output_dir}")
+
+
+@cli.command(name="render-file")
+@click.argument("file", type=click.Path(exists=True, path_type=Path))
+@click.option("--output-dir", type=click.Path(path_type=Path), default=Path("artifacts"))
+@click.option("--openscad", default=None, help="OpenSCAD binary path (auto-detected if not set)")
+@click.pass_context
+def render_file(ctx: click.Context, file: Path, output_dir: Path, openscad: str | None) -> None:
+    """Render a single file to STL and PNG preview."""
+    base_path = ctx.obj["base_path"]
+    openscad = openscad or find_openscad()
+
+    # Resolve file path relative to base_path if needed
+    if not str(file).startswith(str(base_path)):
+        # Try to find it under base_path
+        potential = base_path / file
+        if potential.exists():
+            file = potential
+
+    if not render_single_model(file, base_path, output_dir, openscad, cache_config=None):
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("file", type=click.Path(exists=True, path_type=Path))
+@click.option("--openscad", default=None, help="OpenSCAD binary path (auto-detected if not set)")
+def gui(file: Path, openscad: str | None) -> None:
+    """Open a file in OpenSCAD GUI."""
+    openscad = openscad or find_openscad()
+    subprocess.Popen([openscad, str(file)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    click.echo(f"Opened {file} in OpenSCAD")
 
 
 @cli.command()

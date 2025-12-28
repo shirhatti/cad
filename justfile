@@ -2,320 +2,69 @@
 default:
     @just --list
 
-# ===== SETUP & DEPENDENCIES =====
+# ===== SETUP =====
 
-# Bootstrap uv (Python package manager)
+# Bootstrap uv if not installed
 _ensure-uv:
     #!/usr/bin/env bash
     if ! command -v uv &> /dev/null; then
         echo "Installing uv..."
         curl -LsSf https://astral.sh/uv/install.sh | sh
-        export PATH="$HOME/.local/bin:$PATH"
     fi
 
-# Install Python dependencies and pre-commit hooks
+# Install dependencies and pre-commit hooks
 setup: _ensure-uv
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "Syncing Python dependencies..."
     uv sync
-    echo "Installing pre-commit hooks..."
     uv run pre-commit install
-    echo "✓ Setup complete!"
 
-# ===== LINTING =====
+# ===== CORE COMMANDS =====
 
-# Run Customizer linter on all OpenSCAD files
+# Lint all OpenSCAD files
 lint: _ensure-uv
     uv run scad-tools lint
 
-# Run Customizer linter in strict mode (warnings are errors)
+# Lint in strict mode (warnings are errors)
 lint-strict: _ensure-uv
     uv run scad-tools lint --strict
 
-# Run all pre-commit hooks on all files
-pre-commit: _ensure-uv
-    uv run pre-commit run --all-files
+# Run all OpenSCAD unit tests
+test: _ensure-uv
+    uv run scad-tools test
 
-# ===== TESTING =====
+# Validate models render without errors
+check: _ensure-uv
+    uv run scad-tools check
 
-# Run all OpenSCAD unit tests (*_test.scad files)
-test:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    openscad_bin="{{_openscad_bin}}"
-    failed=0
-    count=0
-
-    # Find all test files in projects/
-    while IFS= read -r -d '' test_file; do
-        count=$((count + 1))
-        echo "Running: $test_file"
-        if output=$("$openscad_bin" --hardwarnings --export-format csg -o /dev/null "$test_file" 2>&1); then
-            # Check for PASS messages and any assertion failures in output
-            if echo "$output" | grep -q "FAIL:"; then
-                echo "  ✗ FAILED (assertion)"
-                echo "$output" | grep "FAIL:" | sed 's/^/    /'
-                failed=$((failed + 1))
-            else
-                passes=$(echo "$output" | grep -c "PASS:" || true)
-                echo "  ✓ OK ($passes assertions passed)"
-            fi
-        else
-            echo "  ✗ FAILED (render error)"
-            echo "$output" | tail -5 | sed 's/^/    /'
-            failed=$((failed + 1))
-        fi
-    done < <(find projects -name "*_test.scad" -type f -print0)
-
-    echo ""
-    if [ $count -eq 0 ]; then
-        echo "No test files found (looking for *_test.scad in projects/)"
-        exit 0
-    elif [ $failed -gt 0 ]; then
-        echo "✗ $failed of $count test file(s) failed"
-        exit 1
-    else
-        echo "✓ All $count test file(s) passed"
-    fi
-
-# Run tests for a specific project
-test-project project:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    openscad_bin="{{_openscad_bin}}"
-    project_dir="projects/{{project}}"
-
-    if [ ! -d "$project_dir" ]; then
-        echo "Error: Project directory '$project_dir' not found"
-        exit 1
-    fi
-
-    failed=0
-    count=0
-
-    while IFS= read -r -d '' test_file; do
-        count=$((count + 1))
-        echo "Running: $test_file"
-        if output=$("$openscad_bin" --hardwarnings --export-format csg -o /dev/null "$test_file" 2>&1); then
-            if echo "$output" | grep -q "FAIL:"; then
-                echo "  ✗ FAILED (assertion)"
-                echo "$output" | grep "FAIL:" | sed 's/^/    /'
-                failed=$((failed + 1))
-            else
-                passes=$(echo "$output" | grep -c "PASS:" || true)
-                echo "  ✓ OK ($passes assertions passed)"
-            fi
-        else
-            echo "  ✗ FAILED (render error)"
-            echo "$output" | tail -5 | sed 's/^/    /'
-            failed=$((failed + 1))
-        fi
-    done < <(find "$project_dir" -name "*_test.scad" -type f -print0)
-
-    echo ""
-    if [ $count -eq 0 ]; then
-        echo "No test files found in $project_dir"
-        exit 0
-    elif [ $failed -gt 0 ]; then
-        echo "✗ $failed of $count test file(s) failed"
-        exit 1
-    else
-        echo "✓ All $count test file(s) passed"
-    fi
-
-# ===== OPENSCAD =====
-
-# Find OpenSCAD binary (Homebrew install)
-_openscad_app := `brew info --cask openscad --json=v2 2>/dev/null | jq -r '.casks[0].artifacts[] | select(.app?) | .app[0]'`
-_openscad := "/Applications" / _openscad_app
-_openscad_bin := _openscad / "Contents/MacOS/OpenSCAD"
-
-# Orca Slicer binary path
-# Install from: https://github.com/OrcaSlicer/OrcaSlicer/releases
-_orca_slicer_bin := "/Applications/OrcaSlicer.app/Contents/MacOS/OrcaSlicer"
-
-# Orca Slicer profile configuration
-# Profiles from upstream submodule, with local overrides for CLI compatibility
-_orca_profiles_upstream := ".orca-slicer/resources/profiles/BBL"
-_orca_profiles_local := ".orca-profiles-local/BBL"
-_orca_machine_profile := _orca_profiles_local / "machine/Bambu Lab A1 0.4 nozzle.json"
-_orca_process_profile := _orca_profiles_local / "process/0.20mm Standard @BBL A1.json"
-_orca_filament_profile := _orca_profiles_upstream / "filament/Generic PLA @BBL A1.json"
-
-# Helper function to run OpenSCAD quietly (suppress OpenGL warnings)
-_run_openscad := "\"" + _openscad_bin + "\" \"$@\" 2>/dev/null"
-
-# Build all .scad files to .stl (searches projects subdirectories)
+# Render all models to STL + PNG
 build: _ensure-uv
     uv run scad-tools render
 
-# Render a specific file to STL
-render file:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # Strip .scad extension if provided
-    basename="{{file}}"
-    basename="${basename%.scad}"
-    # Create output directory (preserve input directory structure)
-    output_dir="artifacts/stl/$(dirname "${basename}")"
-    mkdir -p "$output_dir"
-    timestamp=$(date +%Y%m%d_%H%M%S)
-    output_base="$(basename "${basename}")"
-    output_file="$output_dir/${output_base}_${timestamp}.stl"
-    echo "Rendering ${basename}.scad..."
-    {{_openscad_bin}} -o "$output_file" "${basename}.scad"
-    # Only create symlink if render succeeded and file exists
-    if [ -f "$output_file" ]; then
-        ln -sf "${output_base}_${timestamp}.stl" "$output_dir/${output_base}.stl"
-        echo "✓ Rendered to: $output_dir/${output_base}.stl"
-    else
-        echo "✗ Render failed - output file not created"
-        exit 1
-    fi
+# Slice all STL models to 3MF
+slice: _ensure-uv
+    uv run scad-tools slice
 
-# Watch for changes and auto-rebuild all files
-watch:
-    @echo "Watching for .scad changes... (Ctrl+C to stop)"
-    watchexec -e scad -c -- just build
-
-# Watch and rebuild a specific file
-watch-file file:
-    #!/usr/bin/env bash
-    basename="{{file}}"
-    basename="${basename%.scad}"
-    echo "Watching ${basename}.scad... (Ctrl+C to stop)"
-    watchexec -w "${basename}.scad" -c -- just render "${basename}"
-
-# Generate PNG preview for a file
-preview file:
-    #!/usr/bin/env bash
-    openscad() { {{_openscad_bin}} "$@" 2>/dev/null; }
-    mkdir -p artifacts/preview
-    # Strip .scad extension if provided
-    basename="{{file}}"
-    basename="${basename%.scad}"
-    openscad -o "artifacts/preview/${basename}.png" --autocenter --viewall --camera=0,0,0,55,0,25,500 "${basename}.scad"
-
-# Generate PNG previews for all files
-preview-all:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    openscad() { {{_openscad_bin}} "$@" 2>/dev/null; }
-    mkdir -p artifacts/preview
-    for f in *.scad; do
-        [ -f "$f" ] || continue
-        out="artifacts/preview/${f%.scad}.png"
-        echo "Rendering preview: $f -> $out"
-        openscad -o "$out" --autocenter --viewall --camera=0,0,0,55,0,25,500 "$f"
-    done
-    echo "Done. PNG previews in ./artifacts/preview/"
-
-# Open a file in OpenSCAD GUI
-gui file:
-    #!/usr/bin/env bash
-    basename="{{file}}"
-    basename="${basename%.scad}"
-    "{{_openscad_bin}}" "${basename}.scad" >/dev/null 2>&1 &
+# Run pre-commit hooks
+pre-commit: _ensure-uv
+    uv run pre-commit run --all-files
 
 # Clean build artifacts
 clean:
     rm -rf artifacts/
 
-# Validate models render without errors (catches manifold/geometry issues)
-check: _ensure-uv
-    uv run scad-tools check
+# ===== SINGLE-FILE COMMANDS =====
 
-# Export high-quality render (slower, better quality)
-render-hq file:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    openscad() { {{_openscad_bin}} "$@" 2>/dev/null; }
-    # Strip .scad extension if provided
-    basename="{{file}}"
-    basename="${basename%.scad}"
-    # Create output directory (preserve input directory structure)
-    output_dir="artifacts/stl/$(dirname "${basename}")"
-    mkdir -p "$output_dir"
-    timestamp=$(date +%Y%m%d_%H%M%S)
-    output_base="$(basename "${basename}")"
-    output_file="$output_dir/${output_base}_${timestamp}.stl"
-    openscad -o "$output_file" --render "${basename}.scad"
-    # Only create symlink if render succeeded and file exists
-    if [ -f "$output_file" ]; then
-        ln -sf "${output_base}_${timestamp}.stl" "$output_dir/${output_base}.stl"
-        echo "✓ Rendered to: $output_dir/${output_base}.stl"
-    else
-        echo "✗ Render failed - output file not created"
-        exit 1
-    fi
+# Render a specific file
+render file: _ensure-uv
+    uv run scad-tools render-file "{{file}}"
 
-# Slice an STL file to 3MF using Orca Slicer (Bambu A1)
-slice file:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    mkdir -p artifacts/gcode artifacts/logs
-    # Strip .scad extension if provided
-    basename="{{file}}"
-    basename="${basename%.scad}"
-    input="artifacts/stl/${basename}.stl"
-    timestamp=$(date +%Y%m%d_%H%M%S)
-    output="artifacts/gcode/${basename}_${timestamp}.3mf"
+# Open file in OpenSCAD GUI
+gui file: _ensure-uv
+    uv run scad-tools gui "{{file}}"
 
-    if [ ! -f "$input" ]; then
-        echo "Error: $input not found. Run 'just render ${basename}' first."
-        exit 1
-    fi
+# Watch and rebuild on changes
+watch: _ensure-uv
+    watchexec -e scad -- just build
 
-    echo "Slicing $input with profiles:"
-    echo "  Machine: {{_orca_machine_profile}}"
-    echo "  Process: {{_orca_process_profile}}"
-    echo "  Filament: {{_orca_filament_profile}}"
-
-    # Build settings argument: machine;process;filament
-    settings="{{_orca_machine_profile}};{{_orca_process_profile}};{{_orca_filament_profile}}"
-
-    # Make paths absolute for Orca Slicer
-    abs_input="$(pwd)/$input"
-    abs_output="$(pwd)/$output"
-
-    {{_orca_slicer_bin}} \
-        --load-settings "$settings" \
-        --slice 0 \
-        --export-3mf "$abs_output" \
-        "$abs_input" \
-        2>&1 | tee "artifacts/logs/${basename}_${timestamp}_slice.log"
-
-    if [ -f "$output" ]; then
-        # Create a symlink without timestamp for easy reference
-        ln -sf "${basename}_${timestamp}.3mf" "artifacts/gcode/${basename}.3mf"
-        echo "✓ Sliced 3MF saved to: $output"
-        echo "  (Symlinked as: artifacts/gcode/${basename}.3mf)"
-        echo "  (Contains G-code - can be sent to printer or opened in Orca Slicer)"
-    else
-        echo "✗ Slicing failed - check artifacts/logs/${basename}_${timestamp}_slice.log for details"
-        cat "artifacts/logs/${basename}_${timestamp}_slice.log"
-        exit 1
-    fi
-
-# Open sliced 3MF in Orca Slicer for review and manual printing
-open-slice file:
-    #!/usr/bin/env bash
-    # Strip .scad extension if provided
-    basename="{{file}}"
-    basename="${basename%.scad}"
-    if [ ! -f "artifacts/gcode/${basename}.3mf" ]; then
-        echo "Error: artifacts/gcode/${basename}.3mf not found. Run 'just slice ${basename}' first."
-        exit 1
-    fi
-    echo "Opening artifacts/gcode/${basename}.3mf in Orca Slicer..."
-    open -a OrcaSlicer "artifacts/gcode/${basename}.3mf"
-
-# Complete workflow: render, slice, and open for review
-prepare file:
-    #!/usr/bin/env bash
-    basename="{{file}}"
-    basename="${basename%.scad}"
-    just render "${basename}"
-    just slice "${basename}"
-    just open-slice "${basename}"
+# Watch a specific file
+watch-file file: _ensure-uv
+    watchexec -w "{{file}}" -- just render "{{file}}"
