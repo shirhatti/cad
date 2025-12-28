@@ -403,11 +403,12 @@ def lint_directory(dirpath: Path, recursive: bool = True) -> list[LintResult]:
     - *_test.scad (unit test files)
     - *_constants.scad (shared constants/library files)
     - *_reference.scad (visualization/reference models, not for printing)
+    - *_lib.scad (shared library modules)
     """
     results = []
 
     # Patterns for non-customizable files
-    exclude_suffixes = ("_test.scad", "_constants.scad", "_reference.scad")
+    exclude_suffixes = ("_test.scad", "_constants.scad", "_reference.scad", "_lib.scad")
 
     pattern = "**/*.scad" if recursive else "*.scad"
     for scad_file in sorted(dirpath.glob(pattern)):
