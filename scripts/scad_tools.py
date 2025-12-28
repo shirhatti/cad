@@ -6,10 +6,12 @@ Single source of truth for file discovery, rendering, linting, and other operati
 Replaces scattered find commands in justfile and CI with consistent exclusion logic.
 
 Usage:
-    uv run python -m scripts.scad_tools list          # List renderable models
-    uv run python -m scripts.scad_tools list --tests  # List test files
-    uv run python -m scripts.scad_tools lint          # Lint all models
-    uv run python -m scripts.scad_tools render        # Render all models
+    uv run scad-tools list          # List renderable models
+    uv run scad-tools list --tests  # List test files
+    uv run scad-tools lint          # Lint all models
+    uv run scad-tools render        # Render all models
+    uv run scad-tools check         # Validate models render
+    uv run scad-tools test          # Run unit tests
 """
 
 import json

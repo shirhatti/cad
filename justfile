@@ -27,11 +27,11 @@ setup: _ensure-uv
 
 # Run Customizer linter on all OpenSCAD files
 lint: _ensure-uv
-    uv run python -m scripts.scad_tools lint
+    uv run scad-tools lint
 
 # Run Customizer linter in strict mode (warnings are errors)
 lint-strict: _ensure-uv
-    uv run python -m scripts.scad_tools lint --strict
+    uv run scad-tools lint --strict
 
 # Run all pre-commit hooks on all files
 pre-commit: _ensure-uv
@@ -148,7 +148,7 @@ _run_openscad := "\"" + _openscad_bin + "\" \"$@\" 2>/dev/null"
 
 # Build all .scad files to .stl (searches projects subdirectories)
 build: _ensure-uv
-    uv run python -m scripts.scad_tools render
+    uv run scad-tools render
 
 # Render a specific file to STL
 render file:
@@ -224,7 +224,7 @@ clean:
 
 # Validate models render without errors (catches manifold/geometry issues)
 check: _ensure-uv
-    uv run python -m scripts.scad_tools check
+    uv run scad-tools check
 
 # Export high-quality render (slower, better quality)
 render-hq file:
