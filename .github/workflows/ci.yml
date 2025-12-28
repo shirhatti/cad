@@ -61,16 +61,6 @@ jobs:
     - name: Create OrcaSlicer symlink
       run: sudo ln -sf /opt/orcaslicer/AppRun /usr/local/bin/orca-slicer
 
-    - name: Install ORAS CLI
-      run: |
-        ORAS_VERSION=$(curl -s https://api.github.com/repos/oras-project/oras/releases/latest | jq -r .tag_name | sed 's/^v//')
-        curl -sLO "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz"
-        tar -xzf "oras_${ORAS_VERSION}_linux_amd64.tar.gz" oras
-        sudo mv oras /usr/local/bin/
-
-    - name: Login to GHCR
-      run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
-
     - name: Update justfile for Linux paths
       run: |
         # Replace brew backtick expression (evaluated at parse time, fails on Linux)
@@ -85,7 +75,6 @@ jobs:
         just --version
         openscad --version
         xvfb-run orca-slicer --help | head -5
-        oras version
 
     - name: Sync Python dependencies
       run: uv sync
@@ -94,29 +83,25 @@ jobs:
       run: uv run scad-tools lint
 
     - name: Run OpenSCAD unit tests
-      run: xvfb-run just test
+      run: uv run scad-tools test
 
     - name: Validate models render
-      run: xvfb-run just check
+      run: uv run scad-tools check
 
     - name: Render models (with GHCR caching)
       env:
         GITHUB_REPOSITORY: ${{ github.repository }}
-      run: |
-        chmod +x scripts/cached_render.sh
-        uv run scad-tools list | while read -r f; do
-          scripts/cached_render.sh "$f" artifacts
-        done
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
+      run: uv run scad-tools render
 
     - name: Slice models (with GHCR caching)
       continue-on-error: true
       env:
         GITHUB_REPOSITORY: ${{ github.repository }}
-      run: |
-        chmod +x scripts/cached_slice.sh
-        uv run scad-tools list --output-names | while read -r fullname; do
-          scripts/cached_slice.sh "$fullname" artifacts || echo "Warning: Failed to slice $fullname"
-        done
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
+      run: uv run scad-tools slice
 
     - name: Upload STL models
       uses: actions/upload-artifact@v4
