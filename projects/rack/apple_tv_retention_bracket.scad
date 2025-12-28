@@ -37,12 +37,12 @@ insert_size = "M4"; // [M4, M5]
 boss_diameter = 12; // [10:1:20]
 // Boss height
 boss_height = 10; // [8:1:15]
-// M4 insert hole diameter
-m4_hole_diameter = 5.6; // [5.0:0.1:6.0]
+// M4 insert hole diameter (5.8mm for M4x4x6 inserts with 6mm OD)
+m4_hole_diameter = 5.8; // [5.0:0.1:6.5]
 // M5 insert hole diameter
 m5_hole_diameter = 6.4; // [6.0:0.1:7.0]
-// Insert hole depth
-insert_hole_depth = 8; // [6:1:12]
+// Insert hole depth (5mm for 4mm long inserts, extra depth for flush seating)
+insert_hole_depth = 5; // [4:0.5:12]
 // Front boss distance from front edge
 front_boss_offset = 15; // [10:1:30]
 // Back boss distance from back edge
