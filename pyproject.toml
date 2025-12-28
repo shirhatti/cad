@@ -31,6 +31,6 @@ tree-sitter-openscad = { git = "https://github.com/openscad/tree-sitter-openscad
 
 [tool.scad-tools.slice]
 # Models excluded from slicing with reasons
-# Format: "project__model" = "reason"
+# Format: "path/to/model.scad" = "reason"
 [tool.scad-tools.slice.exclude]
-"rack__wiim_amp_retention_bracket" = "Too large for Bambu A1 build plate (256x256mm)"
+"rack/wiim_amp_retention_bracket.scad" = "Too large for Bambu A1 build plate (256x256mm)"

@@ -615,7 +615,8 @@ def get_slice_exclusions() -> dict[str, str]:
     """
     Get slice exclusions from pyproject.toml.
 
-    Returns dict mapping model names to exclusion reasons.
+    Config uses real paths (e.g., "rack/wiim_amp_retention_bracket.scad").
+    Returns dict mapping output names (e.g., "rack__wiim_amp_retention_bracket") to exclusion reasons.
     """
     pyproject = Path("pyproject.toml")
     if not pyproject.exists():
@@ -624,7 +625,15 @@ def get_slice_exclusions() -> dict[str, str]:
     try:
         with open(pyproject, "rb") as f:
             config = tomllib.load(f)
-        return config.get("tool", {}).get("scad-tools", {}).get("slice", {}).get("exclude", {})
+        raw_exclusions = config.get("tool", {}).get("scad-tools", {}).get("slice", {}).get("exclude", {})
+
+        # Convert paths to output names: "rack/model.scad" -> "rack__model"
+        exclusions = {}
+        for path, reason in raw_exclusions.items():
+            # Remove .scad extension and replace / with __
+            output_name = path.removesuffix(".scad").replace("/", "__")
+            exclusions[output_name] = reason
+        return exclusions
     except Exception:
         return {}
 
