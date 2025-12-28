@@ -21,8 +21,8 @@ device_height = 63; // [20:1:100]
 /* [Bracket Dimensions] */
 // Overall bracket width (device + clearance + 2×lip_overhang + 2×wall_thickness)
 bracket_width = 222; // [150:1:350]
-// Overall bracket depth
-bracket_depth = 222; // [150:1:350]
+// Overall bracket depth (equals inner cavity for square opening)
+bracket_depth = 202; // [150:1:350]
 // Top plate thickness
 top_plate_thickness = 3; // [2:0.5:5]
 // Side wall height (matches device height, lip overlaps top of device)
@@ -80,9 +80,9 @@ module rounded_rect(width, depth, radius) {
 
 // Top plate with rounded cutout and integrated retention lip
 module top_plate() {
-    // Inner dimensions (device cavity)
+    // Inner dimensions (device cavity) - must be square for square device
     inner_width = bracket_width - 2 * wall_thickness;
-    inner_depth = bracket_depth;  // Open front/back
+    inner_depth = inner_width;  // Square opening (no walls front/back)
 
     difference() {
         // Outer plate with rounded corners
