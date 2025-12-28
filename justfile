@@ -27,11 +27,11 @@ setup: _ensure-uv
 
 # Run Customizer linter on all OpenSCAD files
 lint: _ensure-uv
-    uv run python -m scripts.customizer_lint projects/
+    uv run python -m scripts.scad_tools lint
 
 # Run Customizer linter in strict mode (warnings are errors)
 lint-strict: _ensure-uv
-    uv run python -m scripts.customizer_lint --strict projects/
+    uv run python -m scripts.scad_tools lint --strict
 
 # Run all pre-commit hooks on all files
 pre-commit: _ensure-uv
@@ -147,25 +147,8 @@ _orca_filament_profile := _orca_profiles_upstream / "filament/Generic PLA @BBL A
 _run_openscad := "\"" + _openscad_bin + "\" \"$@\" 2>/dev/null"
 
 # Build all .scad files to .stl (searches projects subdirectories)
-build:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    openscad() { {{_openscad_bin}} "$@" 2>/dev/null; }
-    mkdir -p artifacts/stl
-
-    # Find all .scad files in projects/ (exclude test, constants, reference, and library files)
-    find projects -name "*.scad" -type f \
-        ! -name "*_test.scad" \
-        ! -name "*_constants.scad" \
-        ! -name "*_reference.scad" \
-        ! -name "*_lib.scad" | while read -r f; do
-        project_name=$(dirname "$f" | sed 's|projects/||')
-        basename=$(basename "$f" .scad)
-        out="artifacts/stl/${project_name}__${basename}.stl"
-        echo "Rendering $f -> $out"
-        openscad -o "$out" "$f"
-    done
-    echo "Done. STL files in ./artifacts/stl/"
+build: _ensure-uv
+    uv run python -m scripts.scad_tools render --openscad "{{_openscad_bin}}"
 
 # Render a specific file to STL
 render file:
@@ -240,25 +223,8 @@ clean:
     rm -rf artifacts/
 
 # Validate models render without errors (catches manifold/geometry issues)
-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    failed=0
-    # Exclude test, constants, reference, and library files (not meant to be rendered as models)
-    find projects -name "*.scad" -type f \
-        ! -name "*_test.scad" \
-        ! -name "*_constants.scad" \
-        ! -name "*_reference.scad" \
-        ! -name "*_lib.scad" | while read -r f; do
-        echo "Rendering $f..."
-        if ! {{_openscad_bin}} --export-format csg -o /dev/null "$f" 2>/dev/null; then
-            echo "  ✗ FAILED"
-            failed=1
-        else
-            echo "  ✓ OK"
-        fi
-    done
-    exit $failed
+check: _ensure-uv
+    uv run python -m scripts.scad_tools check --openscad "{{_openscad_bin}}"
 
 # Export high-quality render (slower, better quality)
 render-hq file:
