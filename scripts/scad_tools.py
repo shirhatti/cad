@@ -30,6 +30,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 
 import click
@@ -606,6 +607,29 @@ def test(ctx: click.Context, openscad: str | None) -> None:
 
 
 # =============================================================================
+# Configuration
+# =============================================================================
+
+
+def get_slice_exclusions() -> dict[str, str]:
+    """
+    Get slice exclusions from pyproject.toml.
+
+    Returns dict mapping model names to exclusion reasons.
+    """
+    pyproject = Path("pyproject.toml")
+    if not pyproject.exists():
+        return {}
+
+    try:
+        with open(pyproject, "rb") as f:
+            config = tomllib.load(f)
+        return config.get("tool", {}).get("scad-tools", {}).get("slice", {}).get("exclude", {})
+    except Exception:
+        return {}
+
+
+# =============================================================================
 # OrcaSlicer Support
 # =============================================================================
 
@@ -799,10 +823,11 @@ def slice(ctx: click.Context, output_dir: Path) -> None:
 
     Requires STL files to already be rendered in artifacts/stl/.
     Automatically uses GHCR caching when GITHUB_REPOSITORY is set.
+    Models can be excluded in pyproject.toml [tool.scad-tools.slice.exclude].
     """
-    base_path = ctx.obj["base_path"]
     orca_bin = find_orca_slicer()
     cache_config = get_cache_config()
+    exclusions = get_slice_exclusions()
 
     if cache_config:
         click.echo(f"ORAS caching enabled: {cache_config['registry']}")
@@ -819,16 +844,35 @@ def slice(ctx: click.Context, output_dir: Path) -> None:
         sys.exit(1)
 
     failed = []
+    skipped = []
+    sliced = 0
+
     for stl_file in stl_files:
         model_name = stl_file.stem
-        if not slice_single_model(model_name, output_dir, orca_bin, cache_config):
+
+        # Check if excluded
+        if model_name in exclusions:
+            reason = exclusions[model_name]
+            click.secho(f"Skipping {model_name}: {reason}", fg="yellow")
+            skipped.append(model_name)
+            continue
+
+        if slice_single_model(model_name, output_dir, orca_bin, cache_config):
+            sliced += 1
+        else:
             failed.append(model_name)
 
+    # Summary
+    click.echo()
+    if skipped:
+        click.echo(f"Skipped {len(skipped)} model(s) (excluded in config)")
     if failed:
-        click.echo(f"\n{len(failed)} model(s) failed to slice", err=True)
+        click.secho(f"✗ {len(failed)} model(s) failed to slice", fg="red", err=True)
+        for name in failed:
+            click.echo(f"  - {name}")
         sys.exit(1)
 
-    click.echo(f"\n✓ Sliced {len(stl_files)} model(s) to {output_dir / 'gcode'}")
+    click.echo(f"✓ Sliced {sliced} model(s) to {output_dir / 'gcode'}")
 
 
 if __name__ == "__main__":
