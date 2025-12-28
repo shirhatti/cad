@@ -80,6 +80,14 @@ module _lib_insert_boss(bd, bh, hd, hd_depth) {
     }
 }
 
+// Counterbore cut (applied after union to cut through flange+boss)
+module _lib_counterbore(bd) {
+    counterbore_depth = 1;
+    counterbore_diameter = bd - 2;  // 2mm smaller than boss
+    translate([0, 0, -0.1])
+        cylinder(d = counterbore_diameter, h = counterbore_depth + 0.1);
+}
+
 // Flange supporting boss (full height for support-free printing)
 module _lib_boss_flange(y_pos, is_left, overhang, bd, th, wt) {
     fw = overhang + bd / 2;
@@ -98,26 +106,34 @@ module _lib_side_wall(is_left, bd, wh, wt, overhang, boss_d, boss_h,
     frame_top = 6;
     frame_bottom = 10;
 
-    union() {
-        // Hollowed wall
-        difference() {
-            cube([wt, bd, wh]);
+    difference() {
+        union() {
+            // Hollowed wall
+            difference() {
+                cube([wt, bd, wh]);
 
-            translate([-0.5, frame_width, frame_bottom])
-                cube([wt + 1,
-                      bd - 2 * frame_width,
-                      wh - frame_bottom - frame_top]);
+                translate([-0.5, frame_width, frame_bottom])
+                    cube([wt + 1,
+                          bd - 2 * frame_width,
+                          wh - frame_bottom - frame_top]);
+            }
+
+            // Front boss and flange
+            _lib_boss_flange(front_off, is_left, overhang, boss_d, th, wt);
+            translate([boss_x, front_off, 0])
+                _lib_insert_boss(boss_d, boss_h, hole_d, hole_depth);
+
+            // Back boss and flange
+            _lib_boss_flange(bd - back_off, is_left, overhang, boss_d, th, wt);
+            translate([boss_x, bd - back_off, 0])
+                _lib_insert_boss(boss_d, boss_h, hole_d, hole_depth);
         }
 
-        // Front boss and flange
-        _lib_boss_flange(front_off, is_left, overhang, boss_d, th, wt);
+        // Counterbore cuts (applied after union to cut through flange)
         translate([boss_x, front_off, 0])
-            _lib_insert_boss(boss_d, boss_h, hole_d, hole_depth);
-
-        // Back boss and flange
-        _lib_boss_flange(bd - back_off, is_left, overhang, boss_d, th, wt);
+            _lib_counterbore(boss_d);
         translate([boss_x, bd - back_off, 0])
-            _lib_insert_boss(boss_d, boss_h, hole_d, hole_depth);
+            _lib_counterbore(boss_d);
     }
 }
 
