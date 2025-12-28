@@ -177,12 +177,6 @@ def lint(ctx: click.Context, strict: bool, quiet: bool) -> None:
     base_path = ctx.obj["base_path"]
     files = find_scad_files(base_path)
 
-    # ANSI colors
-    if sys.stdout.isatty():
-        RED, YELLOW, GREEN, RESET = "\033[91m", "\033[93m", "\033[92m", "\033[0m"
-    else:
-        RED, YELLOW, GREEN, RESET = "", "", "", ""
-
     total_errors = 0
     total_warnings = 0
     failed = 0
@@ -191,12 +185,12 @@ def lint(ctx: click.Context, strict: bool, quiet: bool) -> None:
         result = lint_file(f)
 
         for error in result.errors:
-            click.echo(f"{RED}{error}{RESET}")
+            click.secho(str(error), fg="red")
             total_errors += 1
 
         if not quiet:
             for warning in result.warnings:
-                click.echo(f"{YELLOW}{warning}{RESET}")
+                click.secho(str(warning), fg="yellow")
                 total_warnings += 1
 
         if not result.passed or (strict and result.warnings):
@@ -206,9 +200,9 @@ def lint(ctx: click.Context, strict: bool, quiet: bool) -> None:
     click.echo()
     passed = len(files) - failed
     if failed == 0:
-        click.echo(f"{GREEN}All {len(files)} file(s) passed Customizer linting{RESET}")
+        click.secho(f"All {len(files)} file(s) passed Customizer linting", fg="green")
     else:
-        click.echo(f"{RED}{failed} file(s) failed, {passed} passed{RESET}")
+        click.secho(f"{failed} file(s) failed, {passed} passed", fg="red")
         click.echo(f"  {total_errors} error(s), {total_warnings} warning(s)")
 
     if strict:
