@@ -143,6 +143,53 @@ def compute_file_hash(file_path: Path) -> str:
     return sha256.hexdigest()
 
 
+def find_scad_dependencies(scad_file: Path) -> list[Path]:
+    """
+    Find all files included/used by a .scad file.
+
+    Parses include <...> and use <...> statements and resolves paths
+    relative to the scad file's directory.
+    """
+    import re
+
+    deps = []
+    base_dir = scad_file.parent
+
+    try:
+        content = scad_file.read_text()
+        # Match include <file.scad> and use <file.scad>
+        pattern = r'(?:include|use)\s*<([^>]+)>'
+        for match in re.finditer(pattern, content):
+            dep_path = base_dir / match.group(1)
+            if dep_path.exists():
+                deps.append(dep_path)
+                # Recursively find dependencies of dependencies
+                deps.extend(find_scad_dependencies(dep_path))
+    except Exception:
+        pass
+
+    return deps
+
+
+def compute_model_hash(scad_file: Path) -> str:
+    """
+    Compute hash of a .scad file and all its dependencies.
+
+    This ensures cache invalidation when any included file changes.
+    """
+    sha256 = hashlib.sha256()
+
+    # Hash the main file
+    sha256.update(scad_file.read_bytes())
+
+    # Hash all dependencies (sorted for determinism)
+    deps = find_scad_dependencies(scad_file)
+    for dep in sorted(set(deps)):
+        sha256.update(dep.read_bytes())
+
+    return sha256.hexdigest()
+
+
 def compute_string_hash(s: str) -> str:
     """Compute SHA256 hash of a string."""
     return hashlib.sha256(s.encode()).hexdigest()
@@ -397,7 +444,7 @@ def render_single_model(
 
     # Check cache if enabled
     if cache_config:
-        file_hash = compute_file_hash(scad_file)
+        file_hash = compute_model_hash(scad_file)  # includes dependencies
         version_hash = compute_string_hash(get_openscad_version(openscad))[:8]
         cache_tag = f"{version_hash}-{file_hash[:12]}"
 
