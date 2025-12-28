@@ -41,14 +41,7 @@ jobs:
       uses: astral-sh/setup-uv@v4
       with:
         version: "latest"
-
-    - name: Cache uv dependencies
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/uv
-        key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-        restore-keys: |
-          uv-${{ runner.os }}-
+        enable-cache: true
 
     - name: Install OrcaSlicer
       run: |
@@ -60,15 +53,6 @@ jobs:
 
     - name: Create OrcaSlicer symlink
       run: sudo ln -sf /opt/orcaslicer/AppRun /usr/local/bin/orca-slicer
-
-    - name: Update justfile for Linux paths
-      run: |
-        # Replace brew backtick expression (evaluated at parse time, fails on Linux)
-        sed -i 's|_openscad_app := .*|_openscad_app := ""|' justfile
-        # Update OpenSCAD binary path
-        sed -i 's|_openscad_bin := .*|_openscad_bin := "openscad"|' justfile
-        # Update OrcaSlicer binary path
-        sed -i 's|_orca_slicer_bin := .*|_orca_slicer_bin := "orca-slicer"|' justfile
 
     - name: Verify tools
       run: |
