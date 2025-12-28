@@ -54,10 +54,8 @@ boss_overhang = 6.75; // [0:0.25:20]
 $fa = 1;
 $fn = 64;
 
-// ============================================================
-// Derived dimensions (exported for tests)
-// ============================================================
-
+/* [Hidden] */
+// Derived dimensions (computed, not user-settable)
 insert_hole_diameter = (insert_size == "M5") ? m5_hole_diameter : m4_hole_diameter;
 bracket_width = calc_bracket_width(device_size, clearance, lip_overhang, wall_thickness);
 bracket_depth = calc_bracket_depth(device_size, clearance, lip_overhang);
