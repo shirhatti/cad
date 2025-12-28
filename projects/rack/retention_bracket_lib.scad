@@ -80,12 +80,30 @@ module _lib_insert_boss(bd, bh, hd, hd_depth) {
     }
 }
 
+// ============================================================
+// Heat-Set Insert Specifications
+// ============================================================
+//
+// M4×4×6 (4mm thread, 4mm length, 6mm OD):
+//   Bore diameter: 5.8mm
+//   Bore depth: 4.5-5mm
+//   Install: Soldering iron at 220-250°C, press slowly until seated
+//   Note: Undersized hole gives brass knurling material to grip.
+//         Extra depth ensures insert sits flush or slightly below surface.
+
 // Counterbore cut (applied after union to cut through flange+boss)
-module _lib_counterbore(bd) {
+// Cuts both the visual counterbore ring AND the insert hole through the flange
+module _lib_counterbore(bd, hd, hd_depth) {
     counterbore_depth = 1;
     counterbore_diameter = bd - 2;  // 2mm smaller than boss
+
+    // Counterbore ring (visual indicator of boss location)
     translate([0, 0, -0.1])
         cylinder(d = counterbore_diameter, h = counterbore_depth + 0.1);
+
+    // Insert hole (must cut through flange since flange fills boss hole)
+    translate([0, 0, -0.5])
+        cylinder(d = hd, h = hd_depth + 0.5);
 }
 
 // Flange supporting boss (full height for support-free printing)
@@ -131,9 +149,9 @@ module _lib_side_wall(is_left, bd, wh, wt, overhang, boss_d, boss_h,
 
         // Counterbore cuts (applied after union to cut through flange)
         translate([boss_x, front_off, 0])
-            _lib_counterbore(boss_d);
+            _lib_counterbore(boss_d, hole_d, hole_depth);
         translate([boss_x, bd - back_off, 0])
-            _lib_counterbore(boss_d);
+            _lib_counterbore(boss_d, hole_d, hole_depth);
     }
 }
 
@@ -158,8 +176,8 @@ module retention_bracket(
     // Threaded insert bosses
     boss_diameter = 12,
     boss_height = 10,
-    insert_hole_diameter = 5.6,  // M4 default
-    insert_hole_depth = 8,
+    insert_hole_diameter = 5.8,  // M4×4×6: 5.8mm bore for 6mm OD insert
+    insert_hole_depth = 5,       // M4×4×6: 5mm depth for 4mm insert
     front_boss_offset = 15,
     back_boss_offset = 15,
     boss_overhang = 6.75
@@ -200,8 +218,8 @@ module retention_bracket_printable(
     corner_radius = 10,
     boss_diameter = 12,
     boss_height = 10,
-    insert_hole_diameter = 5.6,
-    insert_hole_depth = 8,
+    insert_hole_diameter = 5.8,  // M4×4×6: 5.8mm bore for 6mm OD insert
+    insert_hole_depth = 5,       // M4×4×6: 5mm depth for 4mm insert
     front_boss_offset = 15,
     back_boss_offset = 15,
     boss_overhang = 6.75
