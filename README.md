@@ -23,42 +23,55 @@ git submodule update --init --depth 1
 # Optional: Enter Nix development environment
 nix develop
 
-# Build all projects
-just build
+# Install dependencies and pre-commit hooks
+just setup
 
-# Check syntax
+# Lint, test, and validate all models
+just lint
+just test
 just check
 
-# Render and slice specific project
-just render rack__rack_shelf_apple_tv_mount
-just slice rack__rack_shelf_apple_tv_mount
+# Render all models to STL + PNG previews
+just build
+
+# Slice all rendered STL files to 3MF
+just slice
+
+# Render a single file (pass a path)
+just render projects/rack/apple_tv_retention_bracket.scad
 ```
+
+All commands are thin wrappers around the unified `scad-tools` CLI
+(`scripts/scad_tools.py`). Run `uv run scad-tools --help` to see it directly.
 
 ## Commands
 
-### OpenSCAD Rendering
-- `just build` - Render all `.scad` files to STL
-- `just render <name>` - Render a specific file with timestamp
-- `just gui <name>` - Open file in OpenSCAD GUI
-- `just preview <name>` - Generate PNG preview
-- `just check` - Syntax check all files
-- `just clean` - Remove build artifacts
+### Quality checks
+- `just lint` - Lint all models for MakerBot Customizer compliance
+- `just lint-strict` - Lint with warnings treated as errors
+- `just test` - Run OpenSCAD unit tests (`*_test.scad`)
+- `just check` - Validate all models render without errors
+- `just pre-commit` - Run all pre-commit hooks
+
+### OpenSCAD rendering
+- `just build` - Render all `.scad` models to STL + PNG preview
+- `just render <file>` - Render a single file (pass a path)
+- `just gui <file>` - Open a file in the OpenSCAD GUI
+- `just clean` - Remove build artifacts (`artifacts/`)
 
 ### Orca Slicer (3MF/G-code generation)
-- `just slice <name>` - Slice STL to 3MF with embedded G-code
-- `just open-slice <name>` - Open sliced 3MF in Orca Slicer
-- `just prepare <name>` - Full workflow: render → slice → open
+- `just slice` - Slice all rendered STL files to 3MF with embedded G-code
 
-### Watching for Changes
+### Watching for changes
 - `just watch` - Auto-rebuild all files on changes
-- `just watch-file <name>` - Auto-rebuild specific file
+- `just watch-file <file>` - Auto-rebuild a specific file
 
 ## Workflow
 
-1. Create project directory in `projects/<project-name>/`
-2. Add `.scad` files and project README
+1. Create a project directory in `projects/<project-name>/`
+2. Add `.scad` files and a project README
 3. Run `just build` to render STL files
-4. Run `just slice <project>__<model>` to generate G-code
+4. Run `just slice` to generate 3MF/G-code for all rendered models
 
 ## Orca Slicer Configuration
 
@@ -67,12 +80,16 @@ Printer profiles are loaded from the `.orca-slicer` git submodule (OrcaSlicer up
 - **Process**: 0.20mm Standard layer height
 - **Filament**: Generic PLA
 
-To change settings, edit variables in `justfile`:
-```just
-_orca_machine_profile := ".orca-profiles-local/BBL/machine/..."
-_orca_process_profile := ".orca-slicer/resources/profiles/BBL/process/..."
-_orca_filament_profile := ".orca-slicer/resources/profiles/BBL/filament/..."
+To change settings, edit the profile path constants near the top of the
+OrcaSlicer section in `scripts/scad_tools.py`:
+```python
+ORCA_MACHINE_PROFILE = ORCA_PROFILES_LOCAL / "machine/Bambu Lab A1 0.4 nozzle.json"
+ORCA_PROCESS_PROFILE = ORCA_PROFILES_LOCAL / "process/0.20mm Standard @BBL A1.json"
+ORCA_FILAMENT_PROFILE = ORCA_PROFILES_UPSTREAM / "filament/Generic PLA @BBL A1.json"
 ```
+
+Models that can't be sliced (e.g. too large for the build plate) are excluded
+in `pyproject.toml` under `[tool.scad-tools.slice.exclude]`.
 
 See `.orca-profiles-local/README.md` for details on profile overrides.
 

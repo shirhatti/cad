@@ -3,9 +3,9 @@
 //
 // Based on typical 1U vented rack shelf specifications:
 // - Usable shelf area: 438mm × 252mm
-// - Slot pattern: 35.5mm long × 6mm wide slots (oriented along Y-axis/short edge)
+// - Slot pattern: 35.5mm long × 5.5mm wide slots (oriented along Y-axis/short edge)
 // - 19 columns × 3 rows, 20mm X-spacing (360mm total span)
-// - Material: SPCC steel, ~1mm thick
+// - Material: SPCC steel, ~1.2mm thick
 
 /* [Shelf Dimensions] */
 // Usable shelf width (X-axis)
@@ -55,7 +55,7 @@ module vented_shelf() {
     start_x = (shelf_width - x_span) / 2 - slot_width / 2;
 
     // Y-axis: 3 rows centered in shelf_depth
-    y_span = (slot_rows - 1) * slot_spacing_y; // 150mm for 3 rows at 75mm spacing
+    y_span = (slot_rows - 1) * slot_spacing_y; // 106mm for 3 rows at 53mm spacing
     start_y = (shelf_depth - y_span) / 2 - slot_length / 2;
 
     color(shelf_color)
