@@ -23,6 +23,7 @@ Environment variables for GHCR caching (auto-enabled in CI):
     SKIP_CACHE=1         - Disable caching
 """
 
+import datetime
 import hashlib
 import json
 import os
@@ -929,6 +930,176 @@ def slice(ctx: click.Context, output_dir: Path) -> None:
         sys.exit(1)
 
     click.echo(f"✓ Sliced {sliced} model(s) to {output_dir / 'gcode'}")
+
+
+# =============================================================================
+# Static Gallery Site
+# =============================================================================
+
+
+def humanize_name(name: str) -> str:
+    """Turn a basename like 'apple_tv_retention_bracket' into 'Apple Tv Retention Bracket'."""
+    return name.replace("_", " ").strip().title()
+
+
+def extract_model_metadata(scad_file: Path) -> tuple[str, str]:
+    """
+    Extract a display title and short description from a .scad file's header comment.
+
+    The first non-empty leading '//' comment line becomes the title. The first
+    paragraph after it (until a blank comment line) becomes the description.
+    Customizer directive comments (e.g. 'preview[...]') are ignored. Falls back
+    to a humanized file name when no header comment is present.
+    """
+    title = None
+    desc_lines: list[str] = []
+    seen_title = False
+
+    for line in scad_file.read_text().splitlines():
+        stripped = line.strip()
+        if stripped.startswith("//"):
+            text = stripped[2:].strip()
+            if text.startswith("preview[") or text.startswith("["):
+                continue
+            if not text:
+                # Blank comment line: ends the description paragraph once started
+                if seen_title and desc_lines:
+                    break
+                continue
+            if title is None:
+                title = text
+                seen_title = True
+            else:
+                desc_lines.append(text)
+        elif not stripped:
+            continue
+        else:
+            # Hit code (or a block comment) — header is done
+            break
+
+    if not title:
+        title = humanize_name(scad_file.stem)
+    return title, " ".join(desc_lines)
+
+
+def build_manifest(base_path: Path, artifacts_dir: Path) -> dict:
+    """Build the gallery manifest from rendered artifacts and source metadata."""
+    stl_dir = artifacts_dir / "stl"
+    preview_dir = artifacts_dir / "preview"
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    ref = os.environ.get("GITHUB_REF_NAME", "main")
+
+    models = []
+    for scad_file in find_scad_files(base_path):
+        out_name = get_output_name(scad_file, base_path)
+        stl_file = stl_dir / f"{out_name}.stl"
+        if not stl_file.exists():
+            continue  # only include models that actually rendered
+
+        rel_path = scad_file.relative_to(base_path)
+        project = str(rel_path.parent)
+        title, description = extract_model_metadata(scad_file)
+
+        entry = {
+            "name": out_name,
+            "title": title,
+            "description": description,
+            "project": project,
+            "model": scad_file.stem,
+            "stl": f"models/{out_name}.stl",
+        }
+
+        png_file = preview_dir / f"{out_name}.png"
+        if png_file.exists():
+            entry["preview"] = f"previews/{out_name}.png"
+        if repo:
+            entry["source"] = (
+                f"https://github.com/{repo}/blob/{ref}/{base_path}/{rel_path}"
+            )
+
+        models.append(entry)
+
+    return {
+        "generated": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "repo": repo,
+        "models": models,
+    }
+
+
+@cli.command()
+@click.option(
+    "--artifacts-dir",
+    type=click.Path(path_type=Path),
+    default=Path("artifacts"),
+    help="Directory containing rendered stl/ and preview/ output",
+)
+@click.option(
+    "--site-src",
+    type=click.Path(path_type=Path),
+    default=Path("site"),
+    help="Static frontend template directory",
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(path_type=Path),
+    default=Path("_site"),
+    help="Output directory for the built site (Pages artifact root)",
+)
+@click.pass_context
+def gallery(
+    ctx: click.Context, artifacts_dir: Path, site_src: Path, output_dir: Path
+) -> None:
+    """Build the static three.js gallery site from rendered artifacts.
+
+    Copies the frontend template, the rendered STL/PNG files, and a generated
+    manifest.json into the output directory, ready to deploy to GitHub Pages.
+    Run `scad-tools render` first to populate the artifacts directory.
+    """
+    base_path = ctx.obj["base_path"]
+
+    if not site_src.exists():
+        raise click.ClickException(f"Site template not found: {site_src}")
+
+    # Fresh output directory
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True)
+
+    # Copy static frontend (index.html, app.js, style.css, …)
+    for item in site_src.iterdir():
+        if item.is_file():
+            shutil.copy(item, output_dir / item.name)
+        elif item.is_dir():
+            shutil.copytree(item, output_dir / item.name)
+
+    # Build manifest and copy referenced assets
+    manifest = build_manifest(base_path, artifacts_dir)
+    models_out = output_dir / "models"
+    previews_out = output_dir / "previews"
+    models_out.mkdir(exist_ok=True)
+    previews_out.mkdir(exist_ok=True)
+
+    stl_dir = artifacts_dir / "stl"
+    preview_dir = artifacts_dir / "preview"
+    for entry in manifest["models"]:
+        shutil.copy(stl_dir / f"{entry['name']}.stl", models_out / f"{entry['name']}.stl")
+        if "preview" in entry:
+            shutil.copy(
+                preview_dir / f"{entry['name']}.png",
+                previews_out / f"{entry['name']}.png",
+            )
+
+    (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
+
+    # A .nojekyll file keeps GitHub Pages from mangling the static assets
+    (output_dir / ".nojekyll").write_text("")
+
+    count = len(manifest["models"])
+    click.secho(f"✓ Built gallery with {count} model(s) -> {output_dir}", fg="green")
+    if count == 0:
+        click.secho(
+            "  (no STL artifacts found — run 'scad-tools render' first)", fg="yellow"
+        )
 
 
 if __name__ == "__main__":

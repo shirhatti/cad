@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CAD Model Gallery</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🧊</text></svg>" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <aside id="sidebar">
+    <header class="sidebar-header">
+      <h1>🧊 CAD Gallery</h1>
+      <p class="subtitle">OpenSCAD models, rendered &amp; explorable</p>
+      <input id="search" type="search" placeholder="Filter models…" autocomplete="off" />
+    </header>
+    <nav id="model-list" aria-label="Model list"></nav>
+    <footer class="sidebar-footer">
+      <a id="repo-link" href="#" target="_blank" rel="noopener">View source on GitHub →</a>
+      <span id="generated"></span>
+    </footer>
+  </aside>
+
+  <main id="stage">
+    <div id="viewer"></div>
+
+    <div id="toolbar">
+      <button id="btn-reset" title="Reset camera (R)">Reset view</button>
+      <button id="btn-wireframe" title="Toggle wireframe (W)">Wireframe</button>
+      <button id="btn-spin" title="Toggle auto-rotate (Space)">Auto-rotate</button>
+      <a id="btn-download" title="Download STL" download>Download STL</a>
+    </div>
+
+    <div id="info-panel">
+      <h2 id="info-title">Select a model</h2>
+      <p id="info-project"></p>
+      <p id="info-desc"></p>
+      <dl id="info-stats"></dl>
+      <a id="info-source" href="#" target="_blank" rel="noopener" hidden>OpenSCAD source →</a>
+    </div>
+
+    <div id="loading" hidden><div class="spinner"></div><span>Loading model…</span></div>
+    <div id="empty-state" hidden>No models available yet. Run the render step in CI.</div>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
