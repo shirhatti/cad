@@ -63,7 +63,8 @@ Artifact output names are `<project>__<model>` (e.g.
 ## CI
 
 `.github/workflows/ci.yml` runs lint → test → check → render → slice on every
-push/PR to `main`, and uploads STL/PNG/3MF/log artifacts. Renders and slices
+branch push and pull request (superseded runs on a ref are auto-cancelled),
+and uploads STL/PNG/3MF/log artifacts. Renders and slices
 are cached in GHCR via ORAS, keyed by a content hash of each model plus its
 dependencies (and the OpenSCAD/OrcaSlicer version).
 
