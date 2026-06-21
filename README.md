@@ -104,6 +104,33 @@ GitHub Actions automatically validates all models on every push:
 
 Build artifacts (STL, 3MF, logs) are uploaded and available for download from the Actions tab.
 
+## Model Gallery (GitHub Pages)
+
+An interactive gallery lets you explore every model in the browser with a
+[three.js](https://threejs.org/) STL viewer — orbit, zoom, wireframe, and
+auto-rotate, with per-model info pulled from each `.scad` header comment.
+
+🔗 **<https://shirhatti.github.io/cad/>**
+
+The `Deploy Gallery to Pages` workflow (`.github/workflows/pages.yml`) runs on
+every push to `main` (and on demand via *Run workflow*). It renders all models
+— reusing the GHCR render cache, so a cache hit just downloads the prebuilt STL
+instead of re-rendering — builds the static site, and publishes it to Pages.
+
+> **One-time setup:** in **Settings → Pages**, set *Source* to **GitHub
+> Actions**. The first deploy populates the site.
+
+### Building the gallery locally
+
+```bash
+just gallery-build      # render all models + build the site into _site/
+just serve-gallery      # serve _site/ at http://localhost:8000
+```
+
+`just gallery` builds the site from whatever is already in `artifacts/`, while
+`scad-tools gallery` is the underlying command (frontend template lives in
+`site/`, output goes to `_site/`).
+
 ## Adding New Projects
 
 1. Create a new directory: `projects/<project-name>/`

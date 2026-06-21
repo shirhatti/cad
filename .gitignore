@@ -1,5 +1,6 @@
 # Build artifacts
 artifacts/
+_site/
 
 # macOS
 .DS_Store

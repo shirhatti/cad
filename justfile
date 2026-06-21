@@ -43,6 +43,18 @@ build: _ensure-uv
 slice: _ensure-uv
     uv run scad-tools slice
 
+# Build the static three.js gallery site into _site/ (run `build` first)
+gallery: _ensure-uv
+    uv run scad-tools gallery
+
+# Render all models then build the gallery site
+gallery-build: build gallery
+
+# Serve the built gallery locally at http://localhost:8000
+serve-gallery: _ensure-uv
+    @echo "Serving _site at http://localhost:8000 (Ctrl+C to stop)"
+    uv run python -m http.server 8000 --directory _site
+
 # Run pre-commit hooks
 pre-commit: _ensure-uv
     uv run pre-commit run --all-files
