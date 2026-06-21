@@ -95,10 +95,12 @@ auto-rotate, with per-model info pulled from each `.scad` header comment.
 
 🔗 **<https://shirhatti.github.io/cad/>**
 
-The `Deploy Gallery to Pages` workflow (`.github/workflows/pages.yml`) runs on
-every push to `main` (and on demand via *Run workflow*). It renders all models
-— reusing the GHCR render cache, so a cache hit just downloads the prebuilt STL
-instead of re-rendering — builds the static site, and publishes it to Pages.
+The `Deploy Gallery to Pages` workflow (`.github/workflows/pages.yml`) runs
+**after CI completes on `main`** (and on demand via *Run workflow*). Sequencing
+it after CI means the GHCR render cache is already warm, so the gallery build
+gets cache hits — it downloads the prebuilt STL/PNG instead of re-rendering, and
+the two workflows never race for the same cache. It then builds the static site
+and publishes it to Pages.
 
 > **One-time setup:** in **Settings → Pages**, set *Source* to **GitHub
 > Actions**. The first deploy populates the site.
