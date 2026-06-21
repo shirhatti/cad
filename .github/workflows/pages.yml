@@ -1,7 +1,12 @@
 name: Deploy Gallery to Pages
 
 on:
-  push:
+  # Run after CI finishes on main so the GHCR render cache is already warm.
+  # This avoids racing CI for the same cache (both would otherwise start cold
+  # and render everything twice); here Pages gets cache hits instead.
+  workflow_run:
+    workflows: [ "CI" ]
+    types: [ completed ]
     branches: [ main ]
   workflow_dispatch:
 
@@ -20,39 +25,41 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # On workflow_run, only build when CI succeeded. Manual dispatch always runs.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 1
 
-    - name: Cache APT packages
-      uses: awalsh128/cache-apt-pkgs-action@latest
-      with:
-        packages: openscad xvfb
-        version: 1.0
+    # Direct install (no cache-service dependency): openscad + xvfb are all the
+    # gallery render needs. Slicing (OrcaSlicer) is not part of the gallery.
+    - name: Install OpenSCAD
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends openscad xvfb
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v4
+      uses: astral-sh/setup-uv@v6
       with:
         version: "latest"
-        enable-cache: true
 
     - name: Sync Python dependencies
       run: uv sync
 
-    # Renders to artifacts/stl + artifacts/preview. On a cache hit this just
-    # pulls the prebuilt STL/PNG from GHCR instead of re-rendering.
+    # Renders to artifacts/stl + artifacts/preview. After CI, this is all cache
+    # hits — it just pulls the prebuilt STL/PNG from GHCR instead of rendering.
     - name: Render models
       env:
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITHUB_REF_NAME: ${{ github.ref_name }}
+        GITHUB_REF_NAME: main
       run: uv run scad-tools render
 
     - name: Build gallery site
       env:
         GITHUB_REPOSITORY: ${{ github.repository }}
-        GITHUB_REF_NAME: ${{ github.ref_name }}
+        GITHUB_REF_NAME: main
       run: uv run scad-tools gallery
 
     - name: Upload Pages artifact
