@@ -81,11 +81,13 @@ A top-down retention bracket that clamps over the WiiM Amp and secures to the sh
 
 ## Shelf Compatibility
 
-All designs are compatible with standard 1U vented rack shelves featuring:
-- Slot dimensions: 20mm long × 6mm wide (approximately)
-- Slot spacing: 35.5mm center-to-center
+All designs are compatible with standard 1U vented rack shelves featuring
+(see `shelf_slot_constants.scad` for the authoritative values):
+- Slot dimensions: 35.5mm long × 5.5mm wide (rounded ends, 2.75mm radius)
+- Slot spacing: 20mm center-to-center along the X-axis
+- Slot pattern: 19 columns × 3 rows
 - Usable shelf area: 438mm × 252mm
-- Material: SPCC steel, ~1mm thick
+- Material: SPCC steel, ~1.2mm thick
 
 ## General Assembly
 
