@@ -63,8 +63,41 @@ function resize() {
 window.addEventListener("resize", resize);
 new ResizeObserver(resize).observe(viewerEl);
 
+// Smooth camera tween (shared by framing + gizmo). While a tween is active we
+// drive camera.position / controls.target directly and let OrbitControls resync.
+const clock = new THREE.Clock();
+let camTween = null;
+const easeInOutCubic = (t) =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+function tweenCamera(toPos, toTarget, animated = true) {
+  if (!animated) {
+    camera.position.copy(toPos);
+    controls.target.copy(toTarget);
+    controls.update();
+    camTween = null;
+    return;
+  }
+  camTween = {
+    fromPos: camera.position.clone(),
+    toPos: toPos.clone(),
+    fromTgt: controls.target.clone(),
+    toTgt: toTarget.clone(),
+    t: 0,
+    dur: 0.4,
+  };
+}
+
 function animate() {
   requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  if (camTween) {
+    camTween.t = Math.min(1, camTween.t + dt / camTween.dur);
+    const k = easeInOutCubic(camTween.t);
+    camera.position.lerpVectors(camTween.fromPos, camTween.toPos, k);
+    controls.target.lerpVectors(camTween.fromTgt, camTween.toTgt, k);
+    if (camTween.t >= 1) camTween = null;
+  }
   controls.update();
   renderer.render(scene, camera);
 }
@@ -74,14 +107,28 @@ animate();
 // ---------------------------------------------------------------------------
 // Model loading
 // ---------------------------------------------------------------------------
-function frameObject(mesh) {
+// Standard view directions cycled by the gizmo cube button (iso is the default).
+const VIEW_DIRS = [
+  new THREE.Vector3(0.9, 0.7, 1), // iso
+  new THREE.Vector3(0, 0, 1), // front
+  new THREE.Vector3(1, 0, 0.001), // right
+  new THREE.Vector3(0.001, 1, 0.001), // top
+  new THREE.Vector3(-0.9, 0.7, -1), // back-iso
+].map((v) => v.normalize());
+
+let lastFitDist = 200; // used to clamp gizmo zoom
+let modelCenter = new THREE.Vector3();
+
+// Place the model once on load: center its footprint on the origin and rest its
+// base on the grid. Framing the camera is a separate concern (see frameCamera).
+function placeModel(mesh) {
   const box = new THREE.Box3().setFromObject(mesh);
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
 
-  // Re-center the mesh so it sits on the grid, centered on origin
-  mesh.position.sub(center);
-  mesh.position.y += size.y / 2;
+  mesh.position.x -= center.x;
+  mesh.position.z -= center.z;
+  mesh.position.y -= box.min.y; // sit base on the grid (y = 0)
 
   const maxDim = Math.max(size.x, size.y, size.z) || 1;
 
@@ -91,17 +138,59 @@ function frameObject(mesh) {
   grid = new THREE.GridHelper(gridSize, gridSize / 10, 0x3a4456, 0x222a36);
   scene.add(grid);
 
-  // Position camera to frame the object
-  const fitDist = (maxDim / (2 * Math.tan((camera.fov * Math.PI) / 360))) * 1.6;
-  const dir = new THREE.Vector3(0.9, 0.7, 1).normalize();
-  controls.target.set(0, size.y / 2, 0);
-  camera.position.copy(controls.target).add(dir.multiplyScalar(fitDist));
-  camera.near = fitDist / 100;
-  camera.far = fitDist * 100;
-  camera.updateProjectionMatrix();
-  controls.update();
-
   return { size, triangles: mesh.geometry.attributes.position.count / 3 };
+}
+
+// Frame the current model so it's centered and fully visible for the *current*
+// viewport aspect. Uses the bounding sphere and the smaller of the horizontal /
+// vertical FOV so wide and tall parts both fit without cropping.
+function frameCamera(dir = VIEW_DIRS[0], animated = true) {
+  if (!currentMesh) return;
+  const box = new THREE.Box3().setFromObject(currentMesh);
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  modelCenter.copy(sphere.center);
+
+  const vFov = (camera.fov * Math.PI) / 180;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+  const fitFov = Math.min(vFov, hFov);
+  const fitDist = (sphere.radius / Math.sin(fitFov / 2)) * 1.15;
+  lastFitDist = fitDist;
+
+  camera.near = Math.max(fitDist / 1000, 0.01);
+  camera.far = fitDist * 1000;
+  camera.updateProjectionMatrix();
+
+  const target = sphere.center.clone();
+  const camPos = target.clone().add(dir.clone().normalize().multiplyScalar(fitDist));
+  tweenCamera(camPos, target, animated);
+}
+
+// ---- Gizmo motion: orbit and zoom around the current target ----
+function orbit(dThetaDeg, dPhiDeg) {
+  const offset = camera.position.clone().sub(controls.target);
+  const sph = new THREE.Spherical().setFromVector3(offset);
+  sph.theta += (dThetaDeg * Math.PI) / 180;
+  sph.phi = Math.max(0.12, Math.min(Math.PI - 0.12, sph.phi + (dPhiDeg * Math.PI) / 180));
+  offset.setFromSpherical(sph);
+  tweenCamera(controls.target.clone().add(offset), controls.target.clone(), true);
+}
+
+function zoom(factor) {
+  const offset = camera.position.clone().sub(controls.target);
+  const sph = new THREE.Spherical().setFromVector3(offset);
+  sph.radius = Math.max(lastFitDist * 0.25, Math.min(lastFitDist * 6, sph.radius * factor));
+  offset.setFromSpherical(sph);
+  tweenCamera(controls.target.clone().add(offset), controls.target.clone(), true);
+}
+
+let viewIndex = 0;
+function cycleView() {
+  viewIndex = (viewIndex + 1) % VIEW_DIRS.length;
+  frameCamera(VIEW_DIRS[viewIndex], true);
+}
+function resetView() {
+  viewIndex = 0;
+  frameCamera(VIEW_DIRS[0], true);
 }
 
 function clearMesh() {
@@ -125,7 +214,9 @@ function loadModel(model) {
       mesh.rotation.x = -Math.PI / 2;
       scene.add(mesh);
       currentMesh = mesh;
-      const stats = frameObject(mesh);
+      const stats = placeModel(mesh);
+      frameCamera(VIEW_DIRS[0], false);
+      viewIndex = 0;
       updateInfo(model, stats);
       loadingEl.hidden = true;
     },
@@ -264,9 +355,7 @@ const btnReset = document.getElementById("btn-reset");
 const btnWire = document.getElementById("btn-wireframe");
 const btnSpin = document.getElementById("btn-spin");
 
-btnReset.addEventListener("click", () => {
-  if (currentMesh) frameObject(currentMesh);
-});
+btnReset.addEventListener("click", resetView);
 btnWire.addEventListener("click", () => {
   material.wireframe = !material.wireframe;
   btnWire.classList.toggle("on", material.wireframe);
@@ -285,6 +374,124 @@ window.addEventListener("keydown", (e) => {
     btnSpin.click();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Navigation gizmo (on-screen widget)
+// ---------------------------------------------------------------------------
+const SVGNS = "http://www.w3.org/2000/svg";
+const el = (name, attrs = {}) => {
+  const n = document.createElementNS(SVGNS, name);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  return n;
+};
+
+function buildGizmo() {
+  const cx = 60;
+  const cy = 60;
+  const R = 54; // outer ring radius
+  const r = 27; // inner circle radius
+  const pt = (rad, deg) => {
+    const a = (deg * Math.PI) / 180;
+    return [cx + rad * Math.cos(a), cy + rad * Math.sin(a)];
+  };
+  // Annular wedge between inner radius r and outer radius R over [a1, a2] deg.
+  const wedge = (a1, a2) => {
+    const [ix1, iy1] = pt(r, a1);
+    const [ox1, oy1] = pt(R, a1);
+    const [ox2, oy2] = pt(R, a2);
+    const [ix2, iy2] = pt(r, a2);
+    return `M${ix1},${iy1} L${ox1},${oy1} A${R},${R} 0 0 1 ${ox2},${oy2} L${ix2},${iy2} A${r},${r} 0 0 0 ${ix1},${iy1} Z`;
+  };
+
+  const svg = el("svg", { viewBox: "0 0 120 152", class: "gizmo-svg" });
+
+  // Interactive button: an invisible hit path plus one or more glyph paths.
+  const makeBtn = (hitPath, glyphs, title, onClick) => {
+    const g = el("g", { class: "gz-btn" });
+    const t = el("title");
+    t.textContent = title;
+    g.appendChild(t);
+    g.appendChild(el("path", { class: "gz-fill", d: hitPath }));
+    for (const gl of glyphs) g.appendChild(gl);
+    g.addEventListener("click", onClick);
+    svg.appendChild(g);
+    return g;
+  };
+
+  const chevron = (pts) =>
+    el("polyline", { class: "gz-glyph", points: pts, fill: "none" });
+
+  // --- Bottom tab (drawn first so the ring overlaps it) ---
+  svg.appendChild(
+    el("rect", { class: "gz-line", x: 22, y: 104, width: 76, height: 40, rx: 12 })
+  );
+  svg.appendChild(el("line", { class: "gz-line", x1: 60, y1: 112, x2: 60, y2: 144 }));
+
+  // Reset (recenter) button — circular arrow with a small cross.
+  makeBtn(
+    "M22 112 h38 v32 h-26 a12 12 0 0 1 -12 -12 Z",
+    [
+      el("path", {
+        class: "gz-glyph",
+        fill: "none",
+        d: "M46 124 a8 8 0 1 0 2 5",
+      }),
+      el("polyline", { class: "gz-glyph", fill: "none", points: "48 121, 48 129, 40 129" }),
+      el("line", { class: "gz-glyph", x1: 38, y1: 124, x2: 42, y2: 132 }),
+      el("line", { class: "gz-glyph", x1: 42, y1: 124, x2: 38, y2: 132 }),
+    ],
+    "Reset view",
+    resetView
+  );
+
+  // Cube button — cycles standard views (iso → front → right → top → back).
+  makeBtn(
+    "M60 112 h26 a12 12 0 0 1 12 12 v20 h-38 Z",
+    [
+      el("polygon", { class: "gz-glyph", fill: "none", points: "80 116, 90 122, 90 132, 80 138, 70 132, 70 122" }),
+      el("polyline", { class: "gz-glyph", fill: "none", points: "70 122, 80 128, 90 122" }),
+      el("line", { class: "gz-glyph", x1: 80, y1: 128, x2: 80, y2: 138 }),
+    ],
+    "Cycle standard views",
+    cycleView
+  );
+
+  // --- Outer ring: four directional wedges (orbit) ---
+  makeBtn(wedge(225, 315), [chevron("52 26, 60 18, 68 26")], "Tilt up", () => orbit(0, -22.5));
+  makeBtn(wedge(45, 135), [chevron("52 94, 60 102, 68 94")], "Tilt down", () => orbit(0, 22.5));
+  makeBtn(wedge(135, 225), [chevron("26 52, 18 60, 26 68")], "Rotate left", () => orbit(-22.5, 0));
+  makeBtn(wedge(-45, 45), [chevron("94 52, 102 60, 94 68")], "Rotate right", () => orbit(22.5, 0));
+  // Outer ring outline + diagonal segment dividers (on top, non-interactive)
+  svg.appendChild(el("circle", { class: "gz-line", cx, cy, r: R, fill: "none" }));
+  for (const deg of [45, 135, 225, 315]) {
+    const [ix, iy] = pt(r, deg);
+    const [ox, oy] = pt(R, deg);
+    svg.appendChild(el("line", { class: "gz-line", x1: ix, y1: iy, x2: ox, y2: oy }));
+  }
+
+  // --- Inner circle: zoom in (top) / out (bottom) ---
+  makeBtn(
+    `M${cx - r},${cy} A${r},${r} 0 0 1 ${cx + r},${cy} Z`,
+    [
+      el("line", { class: "gz-glyph", x1: 60, y1: 40, x2: 60, y2: 52 }),
+      el("line", { class: "gz-glyph", x1: 54, y1: 46, x2: 66, y2: 46 }),
+    ],
+    "Zoom in",
+    () => zoom(0.8)
+  );
+  makeBtn(
+    `M${cx - r},${cy} A${r},${r} 0 0 0 ${cx + r},${cy} Z`,
+    [el("line", { class: "gz-glyph", x1: 54, y1: 74, x2: 66, y2: 74 })],
+    "Zoom out",
+    () => zoom(1.25)
+  );
+  // Inner circle outline + divider (on top, non-interactive)
+  svg.appendChild(el("circle", { class: "gz-line", cx, cy, r, fill: "none" }));
+  svg.appendChild(el("line", { class: "gz-line", x1: cx - r, y1: cy, x2: cx + r, y2: cy }));
+
+  const mount = document.getElementById("gizmo");
+  mount.appendChild(svg);
+}
 
 // ---------------------------------------------------------------------------
 // Bootstrap
@@ -323,4 +530,5 @@ async function init() {
   target._el.click();
 }
 
+buildGizmo();
 init();

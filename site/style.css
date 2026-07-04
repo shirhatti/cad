@@ -206,6 +206,39 @@ body {
 #info-source { font-size: 12px; color: var(--accent); text-decoration: none; }
 #info-source:hover { text-decoration: underline; }
 
+/* ---------- Navigation gizmo ---------- */
+#gizmo {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: 116px;
+  z-index: 5;
+  user-select: none;
+  -webkit-user-select: none;
+  filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.45));
+}
+.gizmo-svg { display: block; width: 100%; height: auto; }
+.gz-line {
+  stroke: var(--muted);
+  stroke-width: 1.4;
+  fill: none;
+}
+.gz-glyph {
+  stroke: var(--text);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+.gz-btn { cursor: pointer; }
+.gz-fill {
+  fill: rgba(26, 31, 41, 0.72);
+  transition: fill 0.12s;
+}
+.gz-btn:hover .gz-fill { fill: var(--accent-dim); }
+.gz-btn:active .gz-fill { fill: var(--accent); }
+
 #loading {
   position: absolute;
   top: 50%; left: 50%;
