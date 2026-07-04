@@ -72,8 +72,18 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment-retry.outputs.page_url }}
     steps:
     - name: Deploy to GitHub Pages
       id: deployment
+      uses: actions/deploy-pages@v4
+      continue-on-error: true
+
+    # GitHub's Pages backend intermittently rejects an otherwise-valid
+    # deployment with "Deployment failed, try again later." (See run
+    # 28716679590 — the deploys immediately before and after succeeded.)
+    # Retry once so a single transient backend hiccup doesn't fail the run.
+    - name: Retry deploy to GitHub Pages
+      if: steps.deployment.outcome == 'failure'
+      id: deployment-retry
       uses: actions/deploy-pages@v4
