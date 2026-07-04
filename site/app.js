@@ -23,6 +23,10 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.autoRotateSpeed = 2.2;
+// A drag / wheel / pan means the user took control — stop auto-refitting.
+controls.addEventListener("start", () => {
+  userAdjusted = true;
+});
 
 // Lighting
 scene.add(new THREE.AmbientLight(0xffffff, 0.55));
@@ -49,6 +53,12 @@ const material = new THREE.MeshStandardMaterial({
 let currentMesh = null;
 const loader = new STLLoader();
 
+// Auto-fit state: keep re-framing the model as the viewport changes (resize,
+// late layout, tab reveal) until the user manually moves the camera. This keeps
+// the model centered no matter what size the viewer was when it first loaded.
+let userAdjusted = false;
+let currentDir = null; // last view direction used for framing
+
 // ---------------------------------------------------------------------------
 // Rendering loop
 // ---------------------------------------------------------------------------
@@ -59,9 +69,15 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  // Re-fit to the new viewport unless the user has taken control of the camera.
+  if (currentMesh && !userAdjusted) frameCamera(currentDir || undefined, false);
 }
 window.addEventListener("resize", resize);
 new ResizeObserver(resize).observe(viewerEl);
+// A backgrounded tab may lay out at a stale size; re-fit when it becomes visible.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) resize();
+});
 
 // Smooth camera tween (shared by framing + gizmo). While a tween is active we
 // drive camera.position / controls.target directly and let OrbitControls resync.
@@ -146,6 +162,7 @@ function placeModel(mesh) {
 // vertical FOV so wide and tall parts both fit without cropping.
 function frameCamera(dir = VIEW_DIRS[0], animated = true) {
   if (!currentMesh) return;
+  currentDir = dir.clone().normalize();
   const box = new THREE.Box3().setFromObject(currentMesh);
   const sphere = box.getBoundingSphere(new THREE.Sphere());
   modelCenter.copy(sphere.center);
@@ -167,6 +184,7 @@ function frameCamera(dir = VIEW_DIRS[0], animated = true) {
 
 // ---- Gizmo motion: orbit and zoom around the current target ----
 function orbit(dThetaDeg, dPhiDeg) {
+  userAdjusted = true; // user chose a view; stop auto-refitting on resize
   const offset = camera.position.clone().sub(controls.target);
   const sph = new THREE.Spherical().setFromVector3(offset);
   sph.theta += (dThetaDeg * Math.PI) / 180;
@@ -176,6 +194,7 @@ function orbit(dThetaDeg, dPhiDeg) {
 }
 
 function zoom(factor) {
+  userAdjusted = true;
   const offset = camera.position.clone().sub(controls.target);
   const sph = new THREE.Spherical().setFromVector3(offset);
   sph.radius = Math.max(lastFitDist * 0.25, Math.min(lastFitDist * 6, sph.radius * factor));
@@ -185,10 +204,12 @@ function zoom(factor) {
 
 let viewIndex = 0;
 function cycleView() {
+  userAdjusted = false; // a deliberate fit; keep it fitted through resizes
   viewIndex = (viewIndex + 1) % VIEW_DIRS.length;
   frameCamera(VIEW_DIRS[viewIndex], true);
 }
 function resetView() {
+  userAdjusted = false;
   viewIndex = 0;
   frameCamera(VIEW_DIRS[0], true);
 }
@@ -215,6 +236,7 @@ function loadModel(model) {
       scene.add(mesh);
       currentMesh = mesh;
       const stats = placeModel(mesh);
+      userAdjusted = false; // new model → resume auto-fit
       frameCamera(VIEW_DIRS[0], false);
       viewIndex = 0;
       updateInfo(model, stats);
