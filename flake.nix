@@ -21,7 +21,8 @@
           packages = with pkgs; [
             # OpenSCAD tools
             openscad-lsp         # Language server for IDE support
-            # OpenSCAD itself: brew install --cask openscad
+            # OpenSCAD itself: brew install --cask openscad@snapshot
+            # (snapshot builds have the fast Manifold backend CI uses)
             # (Nix version doesn't work on macOS - Qt/GUI issues)
 
             # Build tools
@@ -44,14 +45,14 @@
 
             # Check if OpenSCAD is installed via Homebrew
             if command -v brew >/dev/null 2>&1; then
-              OPENSCAD_APP=$(brew info --cask openscad --json=v2 2>/dev/null | jq -r '.casks[0].artifacts[] | select(.app?) | .app[0]' 2>/dev/null || echo "")
+              OPENSCAD_APP=$(brew info --cask openscad@snapshot --json=v2 2>/dev/null | jq -r '.casks[0].artifacts[] | select(.app?) | .app[0]' 2>/dev/null || echo "")
               if [ -n "$OPENSCAD_APP" ] && [ -d "/Applications/$OPENSCAD_APP" ]; then
                 OPENSCAD_BIN="/Applications/$OPENSCAD_APP/Contents/MacOS/OpenSCAD"
                 export PATH="$(dirname "$OPENSCAD_BIN"):$PATH"
                 echo "   OpenSCAD: $(basename "$OPENSCAD_APP" .app)"
               else
                 echo "   ⚠️  OpenSCAD not found"
-                echo "   Install with: brew install --cask openscad"
+                echo "   Install with: brew install --cask openscad@snapshot"
               fi
             else
               echo "   ⚠️  Homebrew not found"

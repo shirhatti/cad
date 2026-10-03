@@ -23,10 +23,14 @@ just check        # validate all models render (needs OpenSCAD)
 just build        # render all models to STL + PNG (needs OpenSCAD)
 just slice        # slice rendered STL to 3MF (needs OpenSCAD + OrcaSlicer)
 just render <file>  # render a single file by path
+just toolchain    # install pinned OpenSCAD + OrcaSlicer (Linux; toolchain.toml)
 ```
 
 `render`, `check`, `test`, and `slice` process models in parallel (one per CPU
-by default; pass `-j N` to limit). A unit test fails on any OpenSCAD `ERROR:` or
+by default; pass `-j N` to limit). Everything is headless: no display or Xvfb.
+The pinned OpenSCAD snapshot renders PNG previews offscreen and uses the
+Manifold backend (fast, byte-deterministic STLs); OrcaSlicer's CLI slices
+without a display. A unit test fails on any OpenSCAD `ERROR:` or
 `WARNING:` (e.g. a failed `assert()`), since OpenSCAD itself exits 0 on those.
 
 Run `uv run scad-tools --help` to use the CLI directly. The linter is pure
@@ -68,7 +72,11 @@ Artifact output names are `<project>__<model>` (e.g.
 
 `.github/workflows/ci.yml` runs lint → test → check → render → slice on every
 branch push and pull request (superseded runs on a ref are auto-cancelled),
-and uploads STL/PNG/3MF/log artifacts. Renders and slices
+and uploads STL/PNG/3MF/log artifacts. Jobs run in a container image
+(`ci/Dockerfile`) with the toolchain pinned in `toolchain.toml`; its tag is a
+hash of both files, so changing either rebuilds and pushes the image to GHCR
+(and mirrors any newly pinned AppImage there). To bump a tool, update its
+`version`/`url`/`sha256` in `toolchain.toml`. Renders and slices
 are cached in GHCR via ORAS, keyed by a content hash of each model plus its
 dependencies (and the OpenSCAD/OrcaSlicer version).
 

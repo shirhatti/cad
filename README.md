@@ -26,6 +26,10 @@ nix develop
 # Install dependencies and pre-commit hooks
 just setup
 
+# Linux: install the pinned OpenSCAD + OrcaSlicer (headless, no display needed)
+just toolchain
+# macOS: brew install --cask openscad@snapshot
+
 # Lint, test, and validate all models
 just lint
 just test
@@ -101,6 +105,11 @@ GitHub Actions automatically validates all models on every push:
 2. **Rendering** - Generates STL files from all `.scad` models
 3. **Slicing** - Generates 3MF files with embedded G-code
 4. **Validation** - Ensures no slicing errors occurred
+
+CI runs inside a prebuilt container image (`ci/Dockerfile`) holding the
+OpenSCAD and OrcaSlicer builds pinned in `toolchain.toml`, so it needs no apt
+installs, downloads, or virtual display. The image is tagged by a hash of
+those two files and rebuilt only when they change.
 
 Build artifacts (STL, 3MF, logs) are uploaded and available for download from the Actions tab.
 

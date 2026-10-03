@@ -15,8 +15,11 @@ Usage:
     uv run scad-tools check           # Validate models render
     uv run scad-tools test            # Run unit tests
     uv run scad-tools gui FILE        # Open in OpenSCAD GUI
+    uv run scad-tools toolchain install  # Install pinned OpenSCAD + OrcaSlicer
 
 render, check, test, and slice run models in parallel; use -j N to limit.
+Everything runs headless: no display or Xvfb needed (OpenSCAD renders PNG
+previews offscreen; OrcaSlicer's CLI slices without one).
 
 Environment variables for GHCR caching (auto-enabled in CI):
     GITHUB_REPOSITORY    - Owner/repo for cache (e.g., "owner/repo")
@@ -25,7 +28,6 @@ Environment variables for GHCR caching (auto-enabled in CI):
     SKIP_CACHE=1         - Disable caching
 """
 
-import contextlib
 import datetime
 import functools
 import hashlib
@@ -72,30 +74,29 @@ def find_openscad() -> str:
     Find OpenSCAD binary, checking platform-specific locations.
 
     Search order:
-    1. macOS: Homebrew cask install location
-    2. PATH: 'openscad' command
+    1. macOS: Homebrew cask install location (openscad@snapshot, then openscad)
+    2. PATH: 'openscad' command (`scad-tools toolchain install` links the
+       pinned build into ~/.local/bin)
     """
-    # macOS: Check Homebrew cask location
     if sys.platform == "darwin":
-        try:
-            result = subprocess.run(
-                ["brew", "info", "--cask", "openscad", "--json=v2"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            info = json.loads(result.stdout)
-            app_name = None
-            for artifact in info["casks"][0].get("artifacts", []):
-                if isinstance(artifact, dict) and "app" in artifact:
-                    app_name = artifact["app"][0]
-                    break
-            if app_name:
-                openscad_bin = Path("/Applications") / app_name / "Contents/MacOS/OpenSCAD"
-                if openscad_bin.exists():
-                    return str(openscad_bin)
-        except (subprocess.CalledProcessError, json.JSONDecodeError, KeyError, IndexError):
-            pass
+        for cask in ("openscad@snapshot", "openscad"):
+            try:
+                result = subprocess.run(
+                    ["brew", "info", "--cask", cask, "--json=v2"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                info = json.loads(result.stdout)
+                for artifact in info["casks"][0].get("artifacts", []):
+                    if isinstance(artifact, dict) and "app" in artifact:
+                        openscad_bin = (
+                            Path("/Applications") / artifact["app"][0] / "Contents/MacOS/OpenSCAD"
+                        )
+                        if openscad_bin.exists():
+                            return str(openscad_bin)
+            except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError, KeyError, IndexError):
+                pass
 
     # Fall back to PATH
     openscad = shutil.which("openscad")
@@ -103,81 +104,28 @@ def find_openscad() -> str:
         return openscad
 
     raise click.ClickException(
-        "OpenSCAD not found. Install from https://openscad.org/downloads.html"
+        "OpenSCAD not found. Run `uv run scad-tools toolchain install` (Linux) or "
+        "`brew install --cask openscad@snapshot` (macOS)."
     )
 
 
-def needs_xvfb() -> bool:
-    """Check if we need xvfb-run for headless operation."""
-    # macOS and Windows don't need xvfb
-    if sys.platform != "linux":
-        return False
-
-    # If DISPLAY is set, we have a display
-    if os.environ.get("DISPLAY"):
-        return False
-
-    # Check if xvfb-run is available
-    return shutil.which("xvfb-run") is not None
-
-
-@contextlib.contextmanager
-def virtual_display():
+@functools.cache
+def openscad_render_args(openscad: str) -> tuple[str, ...]:
     """
-    Run the enclosed block with a single shared Xvfb server, if one is needed.
+    Extra args for geometry/preview export.
 
-    Starting one server up front (rather than `xvfb-run --auto-servernum` per
-    command) avoids per-invocation startup cost and the display-number race
-    when commands run in parallel. Falls back to per-command xvfb-run when the
-    Xvfb binary itself isn't available.
+    Builds with the Manifold backend (2024+) are 10-100x faster than CGAL and
+    produce byte-identical output across runs; OpenSCAD 2021 lacks the flag.
     """
-    xvfb = shutil.which("Xvfb")
-    if not needs_xvfb() or not xvfb:
-        yield
-        return
-
-    read_fd, write_fd = os.pipe()
-    proc = subprocess.Popen(
-        [xvfb, "-displayfd", str(write_fd), "-screen", "0", "1280x1024x24", "-nolisten", "tcp"],
-        pass_fds=(write_fd,),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    os.close(write_fd)
-    with os.fdopen(read_fd) as f:
-        display = f.readline().strip()  # Xvfb writes the display number once ready
-    if not display:
-        proc.kill()
-        proc.wait()
-        yield  # Xvfb failed to start; run_* fall back to xvfb-run
-        return
-
-    os.environ["DISPLAY"] = f":{display}"
-    try:
-        yield
-    finally:
-        del os.environ["DISPLAY"]
-        proc.terminate()
-        proc.wait()
+    result = subprocess.run([openscad, "--help"], capture_output=True, text=True)
+    if "--backend" in result.stdout + result.stderr:
+        return ("--backend=manifold",)
+    return ()
 
 
-def run_headless(cmd: list[str], needs_display: bool) -> subprocess.CompletedProcess:
-    """Run a command, wrapping it in xvfb-run only if it needs a display we lack."""
-    if needs_display and needs_xvfb():
-        cmd = ["xvfb-run", "--auto-servernum"] + cmd
-    return subprocess.run(cmd, capture_output=True, text=True)
-
-
-def run_openscad(
-    openscad: str, args: list[str], needs_display: bool = False
-) -> subprocess.CompletedProcess:
-    """
-    Run OpenSCAD. Only image (PNG) export needs a display.
-
-    Note: xvfb-run merges the child's stderr into stdout, so callers that
-    parse diagnostics should use `openscad_output()` rather than `.stderr`.
-    """
-    return run_headless([openscad] + args, needs_display)
+def run_openscad(openscad: str, args: list[str]) -> subprocess.CompletedProcess:
+    """Run OpenSCAD headlessly, capturing its output."""
+    return subprocess.run([openscad] + args, capture_output=True, text=True)
 
 
 def openscad_output(result: subprocess.CompletedProcess) -> str:
@@ -384,6 +332,7 @@ def oras_push(
     oci_ref: str,
     files: list[str],
     registry: str = "ghcr.io",
+    chunked: bool = False,
 ) -> bool:
     """
     Push artifacts to OCI registry using ORAS.
@@ -401,7 +350,12 @@ def oras_push(
         # paths (instead of chdir-ing next to them) keeps this thread-safe.
         if files:
             abs_files = [str(Path(f).resolve()) for f in files]
-            client.push(files=abs_files, target=oci_ref, disable_path_validation=True)
+            client.push(
+                files=abs_files,
+                target=oci_ref,
+                disable_path_validation=True,
+                do_chunked=chunked,
+            )
         return True
     except Exception as e:
         # Log the actual error for debugging
@@ -609,7 +563,8 @@ def render_single_model(
 
     # Render STL
     log.echo(f"Rendering {scad_file} -> {stl_file}")
-    result = run_openscad(openscad, ["-o", str(stl_file), str(scad_file)])
+    render_args = list(openscad_render_args(openscad))
+    result = run_openscad(openscad, [*render_args, "-o", str(stl_file), str(scad_file)])
     if result.returncode != 0:
         log.echo(f"  ✗ STL render failed: {openscad_output(result)}", fg="red", err=True)
         return False
@@ -618,11 +573,17 @@ def render_single_model(
     log.echo(f"Rendering preview -> {png_file}")
     result = run_openscad(
         openscad,
-        ["-o", str(png_file), *PREVIEW_ARGS, str(scad_file)],
-        needs_display=True,
+        [*render_args, "-o", str(png_file), *PREVIEW_ARGS, str(scad_file)],
     )
-    if result.returncode != 0:
-        log.echo(f"  ⚠ Preview render failed (continuing): {openscad_output(result)}", fg="yellow")
+    # OpenSCAD 2021 can't render offscreen: without a display it fails or
+    # writes an empty PNG (sometimes exiting 0), so check the file itself
+    if result.returncode != 0 or not png_file.exists() or png_file.stat().st_size == 0:
+        png_file.unlink(missing_ok=True)
+        log.echo(
+            "  ⚠ Preview render produced no image (continuing). If this OpenSCAD "
+            "can't render headless, run `uv run scad-tools toolchain install`.",
+            fg="yellow",
+        )
 
     log.echo(f"  ✓ OK", fg="green")
 
@@ -671,15 +632,14 @@ def render(ctx: click.Context, output_dir: Path, openscad: str | None, jobs: int
     if cache_config:
         click.echo(f"ORAS caching enabled: {cache_config['registry']}")
         get_openscad_version(openscad)  # warm the cache before threads race to fill it
-
+    openscad_render_args(openscad)
     def render_one(f: Path) -> bool:
         log = TaskLog()
         ok = render_single_model(f, base_path, output_dir, openscad, cache_config, log)
         flush_log(log)
         return ok
 
-    with virtual_display():
-        results = run_parallel(render_one, files, jobs)
+    results = run_parallel(render_one, files, jobs)
     failed = [f for f, ok in zip(files, results) if not ok]
 
     if failed:
@@ -707,8 +667,7 @@ def render_file(ctx: click.Context, file: Path, output_dir: Path, openscad: str 
     file = base_path / file.resolve().relative_to(base_path.resolve())
 
     log = TaskLog()
-    with virtual_display():
-        ok = render_single_model(file, base_path, output_dir, openscad, None, log)
+    ok = render_single_model(file, base_path, output_dir, openscad, None, log)
     log.flush()
     if not ok:
         sys.exit(1)
@@ -875,7 +834,8 @@ def find_orca_slicer() -> str:
         return orca
 
     raise click.ClickException(
-        "OrcaSlicer not found. Install from https://github.com/OrcaSlicer/OrcaSlicer/releases"
+        "OrcaSlicer not found. Run `uv run scad-tools toolchain install orcaslicer` (Linux) "
+        "or install from https://github.com/OrcaSlicer/OrcaSlicer/releases"
     )
 
 
@@ -894,8 +854,16 @@ def get_orca_version(orca_bin: str) -> str:
 
 
 def run_orca_slicer(orca_bin: str, args: list[str]) -> subprocess.CompletedProcess:
-    """Run OrcaSlicer, using xvfb-run if needed for headless operation."""
-    return run_headless([orca_bin] + args, needs_display=True)
+    """
+    Run the OrcaSlicer CLI. It slices without a display; only the 3MF plate
+    thumbnail needs OpenGL, and it skips that (as it also did under Xvfb).
+
+    Runs in a scratch directory because the CLI drops a result.json into its
+    working directory, which parallel slices would otherwise all overwrite.
+    Paths in args must therefore be absolute.
+    """
+    with tempfile.TemporaryDirectory() as scratch:
+        return subprocess.run([orca_bin] + args, capture_output=True, text=True, cwd=scratch)
 
 
 def compute_profiles_hash() -> str:
@@ -978,7 +946,9 @@ def slice_single_model(
         log.echo(f"  ✗ Cache miss, slicing...")
 
     # Build settings argument: machine;process;filament
-    settings = f"{ORCA_MACHINE_PROFILE};{ORCA_PROCESS_PROFILE};{ORCA_FILAMENT_PROFILE}"
+    settings = ";".join(
+        str(p.resolve()) for p in (ORCA_MACHINE_PROFILE, ORCA_PROCESS_PROFILE, ORCA_FILAMENT_PROFILE)
+    )
 
     # Make paths absolute for OrcaSlicer
     abs_input = stl_file.resolve()
@@ -1081,8 +1051,7 @@ def slice(ctx: click.Context, output_dir: Path, jobs: int) -> None:
         flush_log(log)
         return ok
 
-    with virtual_display():
-        results = run_parallel(slice_one, to_slice, jobs)
+    results = run_parallel(slice_one, to_slice, jobs)
     failed = [name for name, ok in zip(to_slice, results) if not ok]
     sliced = len(to_slice) - len(failed)
 
@@ -1267,6 +1236,11 @@ def gallery(
         click.secho(
             "  (no STL artifacts found — run 'scad-tools render' first)", fg="yellow"
         )
+
+
+from scripts.toolchain import toolchain  # noqa: E402  (imports helpers above)
+
+cli.add_command(toolchain)
 
 
 if __name__ == "__main__":

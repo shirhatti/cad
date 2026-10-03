@@ -23,32 +23,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  # CI (which this follows) has already built the image for this commit
+  image:
     runs-on: ubuntu-latest
-    # On workflow_run, only build when CI succeeded. Manual dispatch always runs.
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      ref: ${{ steps.ref.outputs.ref }}
     steps:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 1
 
-    # Direct install (no cache-service dependency): openscad + xvfb are all the
-    # gallery render needs. Slicing (OrcaSlicer) is not part of the gallery.
-    - name: Install OpenSCAD
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends openscad xvfb
-
     - name: Install uv
       uses: astral-sh/setup-uv@v6
       with:
         version: "latest"
+        enable-cache: true
+
+    - name: Compute image ref
+      id: ref
+      run: echo "ref=$(uv run scad-tools toolchain image-ref)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: image
+    runs-on: ubuntu-latest
+    # Same headless toolchain image as CI, so renders hit CI's cache keys
+    container:
+      image: ${{ needs.image.outputs.ref }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
 
     - name: Sync Python dependencies
       run: uv sync
 
-    # Renders to artifacts/stl + artifacts/preview. After CI, this is all cache
-    # hits — it just pulls the prebuilt STL/PNG from GHCR instead of rendering.
     - name: Render models
       env:
         GITHUB_REPOSITORY: ${{ github.repository }}

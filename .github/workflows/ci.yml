@@ -11,11 +11,62 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate:
+  # Resolve the CI container image for this commit's toolchain.toml +
+  # ci/Dockerfile, building and pushing it only if that tag doesn't exist yet.
+  # Building also mirrors the pinned AppImages to GHCR on first fetch.
+  image:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    outputs:
+      ref: ${{ steps.ref.outputs.ref }}
+
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Compute image ref
+      id: ref
+      run: echo "ref=$(uv run scad-tools toolchain image-ref)" >> "$GITHUB_OUTPUT"
+
+    - name: Build and push image if missing
+      env:
+        REF: ${{ steps.ref.outputs.ref }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        echo "$GITHUB_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        if docker manifest inspect "$REF" > /dev/null 2>&1; then
+          echo "Using existing $REF"
+          exit 0
+        fi
+        context="$RUNNER_TEMP/ci-image"
+        uv run scad-tools toolchain install --prefix "$context/toolchain"
+        docker build -t "$REF" -f ci/Dockerfile "$context"
+        docker push "$REF"
+
+  validate:
+    needs: image
+    runs-on: ubuntu-latest
+    # Pinned OpenSCAD + OrcaSlicer and their runtime libs; everything below
+    # runs headless with no display, Xvfb, or apt installs.
+    container:
+      image: ${{ needs.image.outputs.ref }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      UV_CACHE_DIR: /tmp/uv-cache
 
     steps:
     - uses: actions/checkout@v5
@@ -27,6 +78,8 @@ jobs:
     # of checking out the whole OrcaSlicer source tree.
     - name: Fetch OrcaSlicer profiles
       run: |
+        # The workspace is owned by the runner user, not the container's root
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
         sha=$(git ls-tree HEAD .orca-slicer | awk '{print $3}')
         git init -q .orca-slicer
         cd .orca-slicer
@@ -35,29 +88,11 @@ jobs:
         git fetch -q --depth 1 --filter=blob:none origin "$sha"
         git checkout -q FETCH_HEAD
 
-    # Plain apt install with a fresh index. The cache action swallowed 404s
-    # from a stale mirror index and cached an empty package set, leaving
-    # OpenSCAD silently missing.
-    - name: Install APT packages
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y openscad xvfb gstreamer1.0-plugins-base libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 libjavascriptcoregtk-6.0-1
-        openscad --version
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@v6
+    - name: Cache uv
+      uses: actions/cache@v4
       with:
-        version: "latest"
-        enable-cache: true
-
-    - name: Install OrcaSlicer
-      run: |
-        wget -q "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v2.3.1/OrcaSlicer_Linux_AppImage_Ubuntu2404_V2.3.1.AppImage" -O OrcaSlicer.AppImage
-        chmod +x OrcaSlicer.AppImage
-        ./OrcaSlicer.AppImage --appimage-extract >/dev/null 2>&1
-        sudo rm -rf /opt/orcaslicer
-        sudo mv squashfs-root /opt/orcaslicer
-        sudo ln -sf /opt/orcaslicer/AppRun /usr/local/bin/orca-slicer
+        path: /tmp/uv-cache
+        key: uv-${{ hashFiles('uv.lock') }}
 
     - name: Sync Python dependencies
       run: uv sync

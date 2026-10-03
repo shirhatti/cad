@@ -17,6 +17,10 @@ setup: _ensure-uv
     uv sync
     uv run pre-commit install
 
+# Install the pinned headless OpenSCAD + OrcaSlicer from toolchain.toml (Linux x86_64)
+toolchain: _ensure-uv
+    uv run scad-tools toolchain install
+
 # ===== CORE COMMANDS =====
 
 # Lint all OpenSCAD files
