@@ -104,6 +104,9 @@ jobs:
     - name: Sync Python dependencies
       run: uv sync
 
+    - name: Test scad-tools CLI
+      run: uv run pytest -q
+
     - name: Lint OpenSCAD files
       run: uv run scad-tools lint
 

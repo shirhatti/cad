@@ -17,7 +17,15 @@ repos:
       - id: openscad-tests
         name: OpenSCAD Unit Tests
         description: Run OpenSCAD unit tests (*_test.scad files)
-        entry: bash -c 'just test'
+        entry: uv run scad-tools test
         language: system
         files: \.scad$
+        pass_filenames: false
+
+      - id: scad-tools-pytest
+        name: scad-tools Python Tests
+        description: Run the pytest suite for the scad-tools CLI (tests/)
+        entry: uv run pytest -q
+        language: system
+        files: ^(scripts|tests)/.*\.py$
         pass_filenames: false

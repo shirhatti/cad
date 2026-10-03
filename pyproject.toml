@@ -24,7 +24,11 @@ packages = ["scripts"]
 [dependency-groups]
 dev = [
     "pre-commit>=4.0.0",
+    "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.uv.sources]
 tree-sitter-openscad = { git = "https://github.com/openscad/tree-sitter-openscad" }

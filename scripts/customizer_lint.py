@@ -467,10 +467,11 @@ def main() -> int:
             click.secho(str(error), fg="red", color=color)
             total_errors += 1
 
+        # Count warnings even when hidden, so --strict --quiet still fails on them
+        total_warnings += len(result.warnings)
         if not args.quiet:
             for warning in result.warnings:
                 click.secho(str(warning), fg="yellow", color=color)
-                total_warnings += 1
 
     # Summary
     if all_results:

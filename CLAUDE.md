@@ -37,6 +37,10 @@ Run `uv run scad-tools --help` to use the CLI directly. The linter is pure
 Python (tree-sitter) and runs without OpenSCAD installed; rendering, checking,
 testing, and slicing require OpenSCAD (and OrcaSlicer for slicing).
 
+The CLI itself has a pytest suite in `tests/` (`uv run pytest`); tests that
+need a real OpenSCAD are skipped when it isn't on PATH. Changes to `scripts/`
+should come with tests.
+
 ## File naming conventions
 
 `scad-tools` classifies `.scad` files by filename suffix. These are NOT
@@ -70,8 +74,8 @@ Artifact output names are `<project>__<model>` (e.g.
 
 ## CI
 
-`.github/workflows/ci.yml` runs lint → test → check → render → slice on every
-branch push and pull request (superseded runs on a ref are auto-cancelled),
+`.github/workflows/ci.yml` runs pytest → lint → test → check → render → slice
+on every branch push and pull request (superseded runs on a ref are auto-cancelled),
 and uploads STL/PNG/3MF/log artifacts. Jobs run in a container image
 (`ci/Dockerfile`) with the toolchain pinned in `toolchain.toml`; its tag is a
 hash of both files, so changing either rebuilds and pushes the image to GHCR
@@ -83,4 +87,6 @@ dependencies (and the OpenSCAD/OrcaSlicer version).
 ## Before committing
 
 Run `just lint` at minimum. If OpenSCAD is available, also run `just test` and
-`just check`. `pre-commit` runs the linter and unit tests automatically.
+`just check`. After changing `scripts/` or `tests/`, run `uv run pytest`.
+`pre-commit` runs the linter, unit tests, and (on Python changes) pytest
+automatically, calling `uv run` directly so `just` isn't required.
