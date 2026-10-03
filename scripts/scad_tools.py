@@ -40,6 +40,7 @@ import sys
 import tempfile
 import threading
 import tomllib
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Iterable, TypeVar
@@ -851,7 +852,8 @@ def get_orca_version(orca_bin: str) -> str:
 def run_orca_slicer(orca_bin: str, args: list[str]) -> subprocess.CompletedProcess:
     """
     Run the OrcaSlicer CLI. It slices without a display; only the 3MF plate
-    thumbnail needs OpenGL, and it skips that (as it also did under Xvfb).
+    thumbnail needs OpenGL, and it skips that (as it also did under Xvfb), so
+    slice_single_model injects one afterwards (see inject_3mf_thumbnail).
 
     Runs in a scratch directory because the CLI drops a result.json into its
     working directory, which parallel slices would otherwise all overwrite.
@@ -859,6 +861,82 @@ def run_orca_slicer(orca_bin: str, args: list[str]) -> subprocess.CompletedProce
     """
     with tempfile.TemporaryDirectory() as scratch:
         return subprocess.run([orca_bin] + args, capture_output=True, text=True, cwd=scratch)
+
+
+# Bump to invalidate cached slices when slice_single_model's output changes in
+# a way the cache tag can't see (e.g. post-processing of the exported 3MF).
+SLICE_CACHE_VERSION = "1"
+
+# Plate thumbnail entries as OrcaSlicer's GUI writes them (v2.3.1,
+# src/libslic3r/Format/bbs_3mf.{hpp,cpp}): THUMBNAIL_FILE_FORMAT
+# "Metadata/plate_%1%.png" plus a "_small" variant from
+# _add_thumbnail_file_to_archive. The CLI's _rels/.rels already points at both
+# (thumbnail, cover-thumbnail-middle, cover-thumbnail-small), and
+# [Content_Types].xml already has the png Default; only the files are missing.
+PLATE_THUMBNAIL = "Metadata/plate_1.png"
+PLATE_THUMBNAIL_SMALL = "Metadata/plate_1_small.png"
+MODEL_SETTINGS_CONFIG = "Metadata/model_settings.config"
+_GCODE_FILE_META_RE = re.compile(
+    r'^([ \t]*)<metadata key="gcode_file" value="Metadata/plate_1\.gcode"/>\n', re.MULTILINE
+)
+
+
+def inject_3mf_thumbnail(threemf: Path, png: Path) -> bool:
+    """
+    Add a plate thumbnail to a single-plate 3MF that OrcaSlicer's headless CLI
+    exported without one, mirroring what its GUI exporter writes:
+
+    - Metadata/plate_1.png and Metadata/plate_1_small.png, stored uncompressed
+      (the exporter uses MZ_NO_COMPRESSION for thumbnails). The GUI downsamples
+      the small one to 128x128; here both are the same 512x512 PNG, since
+      OrcaSlicer never checks its size and resizing would need an image library.
+    - <metadata key="thumbnail_file" value="Metadata/plate_1.png"/> in the
+      plate section of Metadata/model_settings.config, right after gcode_file,
+      as _add_model_config_file_to_archive writes it.
+
+    Every other entry (including the gcode and its .md5) keeps its bytes and
+    compression method. The archive is rewritten to a temp file and swapped in,
+    so a failure leaves the original intact. Returns False if the 3MF already
+    has a plate thumbnail.
+    """
+    thumbnail = png.read_bytes()
+    tmp = threemf.with_name(threemf.name + ".tmp")
+    try:
+        with zipfile.ZipFile(threemf) as src, zipfile.ZipFile(tmp, "w") as dst:
+            if PLATE_THUMBNAIL in src.namelist():
+                return False
+
+            def add_thumbnails(date_time: tuple) -> None:
+                for name in (PLATE_THUMBNAIL, PLATE_THUMBNAIL_SMALL):
+                    entry = zipfile.ZipInfo(name, date_time=date_time)
+                    dst.writestr(entry, thumbnail, compress_type=zipfile.ZIP_STORED)
+
+            added = False
+            for info in src.infolist():
+                data = src.read(info)
+                if info.filename == MODEL_SETTINGS_CONFIG:
+                    text = data.decode()
+                    if 'key="thumbnail_file"' not in text:
+                        text, n = _GCODE_FILE_META_RE.subn(
+                            lambda m: m.group(0)
+                            + f'{m.group(1)}<metadata key="thumbnail_file" value="{PLATE_THUMBNAIL}"/>\n',
+                            text,
+                            count=1,
+                        )
+                        if n != 1:
+                            raise ValueError(f"no plate 1 gcode_file entry in {MODEL_SETTINGS_CONFIG}")
+                    data = text.encode()
+                dst.writestr(info, data, compress_type=info.compress_type)
+                # The GUI writes thumbnails right after [Content_Types].xml.
+                if info.filename == "[Content_Types].xml":
+                    add_thumbnails(info.date_time)
+                    added = True
+            if not added:
+                add_thumbnails(datetime.datetime.now().timetuple()[:6])
+        os.replace(tmp, threemf)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return True
 
 
 def compute_profiles_hash() -> str:
@@ -886,7 +964,8 @@ def slice_single_model(
 
     Args:
         model_name: Output name (e.g., "rack__retention_bracket")
-        artifacts_dir: Directory containing stl/ and for gcode/ output
+        artifacts_dir: Directory containing stl/ (and preview/ for the 3MF
+            thumbnail), and for gcode/ output
         orca_bin: Path to OrcaSlicer binary
         cache_config: ORAS cache configuration or None
         log: Buffer for this model's output
@@ -901,6 +980,7 @@ def slice_single_model(
 
     output_file = gcode_dir / f"{model_name}.3mf"
     log_file = logs_dir / f"{model_name}.log"
+    preview_file = artifacts_dir / "preview" / f"{model_name}.png"
 
     if not stl_file.exists():
         log.echo(f"  ✗ STL not found: {stl_file}", fg="red", err=True)
@@ -914,7 +994,10 @@ def slice_single_model(
         stl_hash = compute_file_hash(stl_file)
         profiles_hash = compute_profiles_hash()[:8]
         slicer_hash = compute_string_hash(get_orca_version(orca_bin))[:8]
-        cache_tag = f"{slicer_hash}-{profiles_hash}-{stl_hash[:12]}"
+        # The preview is embedded as the plate thumbnail, so it's part of the key.
+        preview_hash = compute_file_hash(preview_file) if preview_file.exists() else "no-preview"
+        recipe_hash = compute_string_hash(f"{SLICE_CACHE_VERSION}:{preview_hash}")[:8]
+        cache_tag = f"{slicer_hash}-{profiles_hash}-{stl_hash[:12]}-{recipe_hash}"
 
         registry = cache_config["registry"]
         oci_base = (
@@ -972,6 +1055,17 @@ def slice_single_model(
         return False
 
     log.echo(f"  ✓ OK", fg="green")
+
+    # The headless CLI can't render a plate thumbnail (no OpenGL), so Bambu
+    # printers/apps would show no preview; embed the OpenSCAD render instead.
+    if not preview_file.exists():
+        log.echo(f"  - No preview at {preview_file}, 3MF left without a thumbnail")
+    else:
+        try:
+            if inject_3mf_thumbnail(output_file, preview_file):
+                log.echo(f"  ✓ Embedded thumbnail from {preview_file.name}")
+        except (OSError, ValueError, zipfile.BadZipFile) as e:
+            log.echo(f"  ⚠ Failed to embed thumbnail (continuing): {e}", fg="yellow")
 
     # Push to cache if enabled
     if cache_config:
