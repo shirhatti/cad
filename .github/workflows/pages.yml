@@ -30,15 +30,17 @@ jobs:
     outputs:
       ref: ${{ steps.ref.outputs.ref }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 1
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v6
+      uses: astral-sh/setup-uv@v10.2.0
       with:
         version: "latest"
-        enable-cache: true
+        # No enable-cache: setup-uv's default ("auto") leaves the cache off
+        # for workflow_run, which guards this privileged workflow against
+        # cache poisoning; this job only computes the image ref anyway.
 
     - name: Compute image ref
       id: ref
@@ -54,7 +56,7 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 1
 
@@ -75,9 +77,11 @@ jobs:
       run: uv run scad-tools gallery
 
     - name: Upload Pages artifact
-      uses: actions/upload-pages-artifact@v3
+      uses: actions/upload-pages-artifact@v5
       with:
         path: _site
+        # Keep _site/.nojekyll (v4+ drop dotfiles by default)
+        include-hidden-files: true
 
   deploy:
     needs: build
@@ -88,7 +92,7 @@ jobs:
     steps:
     - name: Deploy to GitHub Pages
       id: deployment
-      uses: actions/deploy-pages@v4
+      uses: actions/deploy-pages@v5
       continue-on-error: true
 
     # GitHub's Pages backend intermittently rejects an otherwise-valid
@@ -98,4 +102,4 @@ jobs:
     - name: Retry deploy to GitHub Pages
       if: steps.deployment.outcome == 'failure'
       id: deployment-retry
-      uses: actions/deploy-pages@v4
+      uses: actions/deploy-pages@v5
