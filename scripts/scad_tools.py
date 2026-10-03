@@ -332,7 +332,6 @@ def oras_push(
     oci_ref: str,
     files: list[str],
     registry: str = "ghcr.io",
-    chunked: bool = False,
 ) -> bool:
     """
     Push artifacts to OCI registry using ORAS.
@@ -350,12 +349,8 @@ def oras_push(
         # paths (instead of chdir-ing next to them) keeps this thread-safe.
         if files:
             abs_files = [str(Path(f).resolve()) for f in files]
-            client.push(
-                files=abs_files,
-                target=oci_ref,
-                disable_path_validation=True,
-                do_chunked=chunked,
-            )
+            # Monolithic upload: GHCR rejects oras-py's chunked uploads (416)
+            client.push(files=abs_files, target=oci_ref, disable_path_validation=True)
         return True
     except Exception as e:
         # Log the actual error for debugging

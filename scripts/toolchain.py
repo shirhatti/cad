@@ -52,13 +52,12 @@ def in_github_actions() -> bool:
     return os.environ.get("GITHUB_ACTIONS") == "true" and bool(os.environ.get("GITHUB_TOKEN"))
 
 
-def pull_from_mirror(ref: str, dest: Path) -> bool:
+def _mirror_auth(ref: str) -> tuple[str, str, dict] | None:
     """
-    Download the single-layer artifact at `ref` to `dest` via the registry API.
-
-    Uses an anonymous pull token (public packages) or GITHUB_TOKEN in CI.
-    Talks to the registry directly rather than through oras-py, which retries
-    a missing or private artifact with long backoff instead of failing fast.
+    Resolve `ref` to (repository URL, tag, auth headers) for direct registry
+    API calls, using an anonymous pull token (public packages) or GITHUB_TOKEN
+    in CI. Talks to the registry directly rather than through oras-py, which
+    retries a missing artifact with long backoff instead of failing fast.
     """
     registry, rest = ref.split("/", 1)
     name, tag = rest.rsplit(":", 1)
@@ -71,20 +70,41 @@ def pull_from_mirror(ref: str, dest: Path) -> bool:
             timeout=30,
         )
         if not token.ok:
-            return False
+            return None
         headers = {
             "Authorization": f"Bearer {token.json()['token']}",
             "Accept": "application/vnd.oci.image.manifest.v1+json",
         }
-        manifest = requests.get(
-            f"https://{registry}/v2/{name}/manifests/{tag}", headers=headers, timeout=30
-        )
+        return f"https://{registry}/v2/{name}", tag, headers
+    except (requests.RequestException, KeyError, ValueError):
+        return None
+
+
+def mirror_has(ref: str) -> bool:
+    """True if the mirror already holds `ref`."""
+    resolved = _mirror_auth(ref)
+    if not resolved:
+        return False
+    repo_url, tag, headers = resolved
+    try:
+        return requests.head(f"{repo_url}/manifests/{tag}", headers=headers, timeout=30).ok
+    except requests.RequestException:
+        return False
+
+
+def pull_from_mirror(ref: str, dest: Path) -> bool:
+    """Download the single-layer artifact at `ref` to `dest`."""
+    resolved = _mirror_auth(ref)
+    if not resolved:
+        return False
+    repo_url, tag, headers = resolved
+    try:
+        manifest = requests.get(f"{repo_url}/manifests/{tag}", headers=headers, timeout=30)
         if not manifest.ok:
             return False
         digest = manifest.json()["layers"][0]["digest"]
         with requests.get(
-            f"https://{registry}/v2/{name}/blobs/{digest}",
-            headers=headers, stream=True, timeout=60,
+            f"{repo_url}/blobs/{digest}", headers=headers, stream=True, timeout=60
         ) as blob:
             blob.raise_for_status()
             with open(dest, "wb") as f:
@@ -96,10 +116,39 @@ def pull_from_mirror(ref: str, dest: Path) -> bool:
         return False
 
 
-def fetch_appimage(config: dict, name: str, spec: dict, dest_dir: Path) -> Path:
-    """Fetch a pinned AppImage into dest_dir (mirror first, then upstream) and verify it."""
+def download_upstream(name: str, spec: dict, dest: Path) -> None:
+    """Download a pinned AppImage from its upstream URL and verify its sha256."""
+    click.echo(f"  {name}: downloading {spec['url']}")
+    with requests.get(spec["url"], stream=True, timeout=60) as r:
+        r.raise_for_status()
+        with open(dest, "wb") as f:
+            for chunk in r.iter_content(1 << 20):
+                f.write(chunk)
+
+    actual = sha256_file(dest)
+    if actual != spec["sha256"]:
+        dest.unlink()
+        raise click.ClickException(
+            f"{name}: sha256 mismatch for {spec['url']}\n"
+            f"  expected {spec['sha256']}\n  got      {actual}"
+        )
+    click.echo(f"  ✓ {name}: verified sha256")
+
+
+def push_to_mirror(name: str, ref: str, path: Path) -> bool:
+    """Push a verified AppImage to the mirror, warning visibly on failure."""
     from scripts.scad_tools import oras_push
 
+    if oras_push(ref, [str(path)], ref.split("/", 1)[0]):
+        click.echo(f"  ✓ {name}: mirrored to {ref}")
+        return True
+    # A workflow annotation shows on the run summary, not just in the log
+    click.echo(f"::warning title=Toolchain mirror::Failed to mirror {name} to {ref}")
+    return False
+
+
+def fetch_appimage(config: dict, name: str, spec: dict, dest_dir: Path) -> Path:
+    """Fetch a pinned AppImage into dest_dir (mirror first, then upstream) and verify it."""
     path = dest_dir / Path(spec["url"]).name
     ref = mirror_ref(config, name, spec)
 
@@ -110,26 +159,10 @@ def fetch_appimage(config: dict, name: str, spec: dict, dest_dir: Path) -> Path:
         click.secho(f"  ⚠ {name}: mirror copy has wrong sha256, ignoring it", fg="yellow")
         path.unlink()
 
-    click.echo(f"  {name}: downloading {spec['url']}")
-    with requests.get(spec["url"], stream=True, timeout=60) as r:
-        r.raise_for_status()
-        with open(path, "wb") as f:
-            for chunk in r.iter_content(1 << 20):
-                f.write(chunk)
-
-    actual = sha256_file(path)
-    if actual != spec["sha256"]:
-        path.unlink()
-        raise click.ClickException(
-            f"{name}: sha256 mismatch for {spec['url']}\n"
-            f"  expected {spec['sha256']}\n  got      {actual}"
-        )
-    click.echo(f"  ✓ {name}: verified sha256")
-
+    download_upstream(name, spec, path)
     # Only CI mirrors: it has a scoped GITHUB_TOKEN with packages: write
     if in_github_actions():
-        if oras_push(ref, [str(path)], ref.split("/", 1)[0], chunked=True):
-            click.echo(f"  ✓ {name}: mirrored to {ref}")
+        push_to_mirror(name, ref, path)
     return path
 
 
@@ -192,6 +225,28 @@ def install(tools: tuple[str, ...], prefix: Path) -> None:
     for name in names:
         install_tool(config, name, prefix)
     click.echo(f"Binaries linked in {prefix / 'bin'}")
+
+
+@toolchain.command()
+def mirror() -> None:
+    """Ensure every pinned AppImage is in the GHCR mirror (CI only).
+
+    Cheap when the mirror is current (one registry request per tool), so CI
+    runs it every time: a failed or missed push is retried on the next run.
+    """
+    if not in_github_actions():
+        raise click.ClickException("Mirroring needs GitHub Actions' GITHUB_TOKEN")
+
+    config = load_toolchain()
+    for name, spec in config["tools"].items():
+        ref = mirror_ref(config, name, spec)
+        if mirror_has(ref):
+            click.echo(f"  ✓ {name}: {ref} present")
+            continue
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / Path(spec["url"]).name
+            download_upstream(name, spec, path)
+            push_to_mirror(name, ref, path)
 
 
 @toolchain.command(name="image-ref")

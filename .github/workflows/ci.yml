@@ -37,6 +37,13 @@ jobs:
       id: ref
       run: echo "ref=$(uv run scad-tools toolchain image-ref)" >> "$GITHUB_OUTPUT"
 
+    # Every run, so a failed or missed mirror push is retried; a no-op (one
+    # registry request per tool) once the mirror is current.
+    - name: Mirror pinned toolchain to GHCR
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: uv run scad-tools toolchain mirror
+
     - name: Build and push image if missing
       env:
         REF: ${{ steps.ref.outputs.ref }}
