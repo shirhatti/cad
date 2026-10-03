@@ -16,6 +16,8 @@ Usage:
     uv run scad-tools test            # Run unit tests
     uv run scad-tools gui FILE        # Open in OpenSCAD GUI
 
+render, check, test, and slice run models in parallel; use -j N to limit.
+
 Environment variables for GHCR caching (auto-enabled in CI):
     GITHUB_REPOSITORY    - Owner/repo for cache (e.g., "owner/repo")
     GITHUB_TOKEN         - Token for GHCR authentication
@@ -23,16 +25,22 @@ Environment variables for GHCR caching (auto-enabled in CI):
     SKIP_CACHE=1         - Disable caching
 """
 
+import contextlib
 import datetime
+import functools
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import tomllib
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Callable, Iterable, TypeVar
 
 import click
 import oras.client
@@ -44,6 +52,19 @@ EXCLUDE_SUFFIXES = {
     "reference": "_reference.scad",  # Visualization-only models
     "lib": "_lib.scad",         # Shared library modules
 }
+
+# Bump to invalidate cached renders when render_single_model's OpenSCAD
+# invocation changes in a way the model hash can't see (e.g. camera args).
+RENDER_CACHE_VERSION = "1"
+
+PREVIEW_ARGS = ["--autocenter", "--viewall", "--camera=0,0,0,55,0,25,500"]
+
+
+def is_model_file(path: Path) -> bool:
+    """True for printable models: .scad files without an excluded suffix."""
+    return path.suffix == ".scad" and not path.name.endswith(
+        tuple(EXCLUDE_SUFFIXES.values())
+    )
 
 
 def find_openscad() -> str:
@@ -100,12 +121,121 @@ def needs_xvfb() -> bool:
     return shutil.which("xvfb-run") is not None
 
 
-def run_openscad(openscad: str, args: list[str]) -> subprocess.CompletedProcess:
-    """Run OpenSCAD, using xvfb-run if needed for headless operation."""
-    cmd = [openscad] + args
-    if needs_xvfb():
+@contextlib.contextmanager
+def virtual_display():
+    """
+    Run the enclosed block with a single shared Xvfb server, if one is needed.
+
+    Starting one server up front (rather than `xvfb-run --auto-servernum` per
+    command) avoids per-invocation startup cost and the display-number race
+    when commands run in parallel. Falls back to per-command xvfb-run when the
+    Xvfb binary itself isn't available.
+    """
+    xvfb = shutil.which("Xvfb")
+    if not needs_xvfb() or not xvfb:
+        yield
+        return
+
+    read_fd, write_fd = os.pipe()
+    proc = subprocess.Popen(
+        [xvfb, "-displayfd", str(write_fd), "-screen", "0", "1280x1024x24", "-nolisten", "tcp"],
+        pass_fds=(write_fd,),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    os.close(write_fd)
+    with os.fdopen(read_fd) as f:
+        display = f.readline().strip()  # Xvfb writes the display number once ready
+    if not display:
+        proc.kill()
+        proc.wait()
+        yield  # Xvfb failed to start; run_* fall back to xvfb-run
+        return
+
+    os.environ["DISPLAY"] = f":{display}"
+    try:
+        yield
+    finally:
+        del os.environ["DISPLAY"]
+        proc.terminate()
+        proc.wait()
+
+
+def run_headless(cmd: list[str], needs_display: bool) -> subprocess.CompletedProcess:
+    """Run a command, wrapping it in xvfb-run only if it needs a display we lack."""
+    if needs_display and needs_xvfb():
         cmd = ["xvfb-run", "--auto-servernum"] + cmd
     return subprocess.run(cmd, capture_output=True, text=True)
+
+
+def run_openscad(
+    openscad: str, args: list[str], needs_display: bool = False
+) -> subprocess.CompletedProcess:
+    """
+    Run OpenSCAD. Only image (PNG) export needs a display.
+
+    Note: xvfb-run merges the child's stderr into stdout, so callers that
+    parse diagnostics should use `openscad_output()` rather than `.stderr`.
+    """
+    return run_headless([openscad] + args, needs_display)
+
+
+def openscad_output(result: subprocess.CompletedProcess) -> str:
+    """Combined OpenSCAD diagnostics, regardless of which stream they landed on."""
+    return (result.stderr or "") + (result.stdout or "")
+
+
+def openscad_diagnostics(result: subprocess.CompletedProcess, prefixes: tuple[str, ...]) -> list[str]:
+    """Lines of OpenSCAD output starting with any of the given prefixes (e.g. 'ERROR:')."""
+    return [line for line in openscad_output(result).splitlines() if line.startswith(prefixes)]
+
+
+T = TypeVar("T")
+R = TypeVar("R")
+
+
+def run_parallel(func: Callable[[T], R], items: Iterable[T], jobs: int) -> list[R]:
+    """Map func over items using up to `jobs` threads, preserving input order."""
+    items = list(items)
+    if jobs <= 1 or len(items) <= 1:
+        return [func(item) for item in items]
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        return list(pool.map(func, items))
+
+
+class TaskLog:
+    """Buffers one task's output so parallel tasks print as contiguous blocks."""
+
+    def __init__(self) -> None:
+        self.lines: list[tuple[str, str | None, bool]] = []
+
+    def echo(self, msg: str, fg: str | None = None, err: bool = False) -> None:
+        self.lines.append((msg, fg, err))
+
+    def flush(self) -> None:
+        for msg, fg, err in self.lines:
+            click.secho(msg, fg=fg, err=err)
+        self.lines.clear()
+
+
+_print_lock = threading.Lock()
+
+
+def flush_log(log: TaskLog) -> None:
+    """Print a task's buffered output atomically with respect to other tasks."""
+    with _print_lock:
+        log.flush()
+
+
+def jobs_option(func):
+    """Shared --jobs option for commands that process models in parallel."""
+    return click.option(
+        "--jobs", "-j",
+        type=click.IntRange(min=1),
+        default=lambda: os.cpu_count() or 1,
+        show_default="CPU count",
+        help="Number of models to process in parallel",
+    )(func)
 
 
 # =============================================================================
@@ -144,30 +274,33 @@ def compute_file_hash(file_path: Path) -> str:
     return sha256.hexdigest()
 
 
-def find_scad_dependencies(scad_file: Path) -> list[Path]:
-    """
-    Find all files included/used by a .scad file.
+_INCLUDE_RE = re.compile(r"\b(?:include|use)\s*<([^>]+)>")
+_COMMENT_RE = re.compile(r"//[^\n]*|/\*.*?\*/", re.DOTALL)
 
-    Parses include <...> and use <...> statements and resolves paths
-    relative to the scad file's directory.
-    """
-    import re
 
+def find_scad_dependencies(scad_file: Path, _seen: set[Path] | None = None) -> list[Path]:
+    """
+    Find all files transitively included/used by a .scad file.
+
+    Parses include <...> and use <...> statements (ignoring commented-out
+    ones) and resolves paths relative to each including file's directory.
+    Each dependency is visited once, so include cycles terminate.
+    """
+    seen = _seen if _seen is not None else {scad_file.resolve()}
     deps = []
-    base_dir = scad_file.parent
 
     try:
-        content = scad_file.read_text()
-        # Match include <file.scad> and use <file.scad>
-        pattern = r'(?:include|use)\s*<([^>]+)>'
-        for match in re.finditer(pattern, content):
-            dep_path = base_dir / match.group(1)
-            if dep_path.exists():
-                deps.append(dep_path)
-                # Recursively find dependencies of dependencies
-                deps.extend(find_scad_dependencies(dep_path))
-    except Exception:
-        pass
+        content = _COMMENT_RE.sub("", scad_file.read_text())
+    except OSError:
+        return deps
+
+    for match in _INCLUDE_RE.finditer(content):
+        dep_path = (scad_file.parent / match.group(1)).resolve()
+        if dep_path in seen or not dep_path.is_file():
+            continue
+        seen.add(dep_path)
+        deps.append(dep_path)
+        deps.extend(find_scad_dependencies(dep_path, seen))
 
     return deps
 
@@ -180,7 +313,8 @@ def compute_model_hash(scad_file: Path) -> str:
     """
     sha256 = hashlib.sha256()
 
-    # Hash the main file
+    # Hash the render recipe, then the main file
+    sha256.update(f"{RENDER_CACHE_VERSION}:{PREVIEW_ARGS}".encode())
     sha256.update(scad_file.read_bytes())
 
     # Hash all dependencies (sorted for determinism)
@@ -196,6 +330,7 @@ def compute_string_hash(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()
 
 
+@functools.cache
 def get_openscad_version(openscad: str) -> str:
     """Get OpenSCAD version string."""
     try:
@@ -207,6 +342,7 @@ def get_openscad_version(openscad: str) -> str:
         return "unknown"
 
 
+@functools.cache
 def get_oras_client(registry: str) -> oras.client.OrasClient:
     """
     Get an ORAS client configured for the given registry.
@@ -261,17 +397,11 @@ def oras_push(
     """
     try:
         client = get_oras_client(registry)
-        # oras-py needs to run from the directory containing the files
-        # and files should be relative paths
+        # Layer titles are the files' basenames either way; pushing absolute
+        # paths (instead of chdir-ing next to them) keeps this thread-safe.
         if files:
-            work_dir = Path(files[0]).parent
-            rel_files = [Path(f).name for f in files]
-            original_dir = os.getcwd()
-            try:
-                os.chdir(work_dir)
-                client.push(files=rel_files, target=oci_ref)
-            finally:
-                os.chdir(original_dir)
+            abs_files = [str(Path(f).resolve()) for f in files]
+            client.push(files=abs_files, target=oci_ref, disable_path_validation=True)
         return True
     except Exception as e:
         # Log the actual error for debugging
@@ -300,6 +430,9 @@ def find_scad_files(
 
     result = []
     for f in all_files:
+        if is_model_file(f):
+            result.append(f)
+            continue
         # Check each exclusion category
         if f.name.endswith(EXCLUDE_SUFFIXES["test"]) and not include_tests:
             continue
@@ -396,10 +529,10 @@ def lint(ctx: click.Context, strict: bool, quiet: bool) -> None:
             click.secho(str(error), fg="red")
             total_errors += 1
 
+        total_warnings += len(result.warnings)
         if not quiet:
             for warning in result.warnings:
                 click.secho(str(warning), fg="yellow")
-                total_warnings += 1
 
         if not result.passed or (strict and result.warnings):
             failed += 1
@@ -424,6 +557,7 @@ def render_single_model(
     output_dir: Path,
     openscad: str,
     cache_config: dict | None,
+    log: TaskLog,
 ) -> bool:
     """
     Render a single model to STL and PNG, with optional caching.
@@ -456,7 +590,7 @@ def render_single_model(
         )
         oci_ref = f"{oci_base}:{cache_tag}"
 
-        click.echo(f"Checking cache for {out_name}...")
+        log.echo(f"Checking cache for {out_name}...")
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -468,33 +602,29 @@ def render_single_model(
                     shutil.copy(cached_stl, stl_file)
                 if cached_png.exists():
                     shutil.copy(cached_png, png_file)
-                click.secho(f"  ✓ Cache hit", fg="green")
+                log.echo(f"  ✓ Cache hit", fg="green")
                 return True
 
-        click.echo(f"  ✗ Cache miss, rendering...")
+        log.echo(f"  ✗ Cache miss, rendering...")
 
     # Render STL
-    click.echo(f"Rendering {scad_file} -> {stl_file}")
+    log.echo(f"Rendering {scad_file} -> {stl_file}")
     result = run_openscad(openscad, ["-o", str(stl_file), str(scad_file)])
     if result.returncode != 0:
-        click.secho(f"  ✗ STL render failed: {result.stderr}", fg="red", err=True)
+        log.echo(f"  ✗ STL render failed: {openscad_output(result)}", fg="red", err=True)
         return False
 
     # Render PNG preview
-    click.echo(f"Rendering preview -> {png_file}")
+    log.echo(f"Rendering preview -> {png_file}")
     result = run_openscad(
         openscad,
-        [
-            "-o", str(png_file),
-            "--autocenter", "--viewall",
-            "--camera=0,0,0,55,0,25,500",
-            str(scad_file),
-        ],
+        ["-o", str(png_file), *PREVIEW_ARGS, str(scad_file)],
+        needs_display=True,
     )
     if result.returncode != 0:
-        click.secho(f"  ⚠ Preview render failed (continuing): {result.stderr}", fg="yellow")
+        log.echo(f"  ⚠ Preview render failed (continuing): {openscad_output(result)}", fg="yellow")
 
-    click.secho(f"  ✓ OK", fg="green")
+    log.echo(f"  ✓ OK", fg="green")
 
     # Push to cache if enabled
     if cache_config and stl_file.exists():
@@ -511,9 +641,9 @@ def render_single_model(
 
             # Push to content-addressed tag
             if oras_push(oci_ref, push_files, registry):
-                click.echo(f"  ✓ Cached {out_name}")
+                log.echo(f"  ✓ Cached {out_name}")
             else:
-                click.echo(f"  ⚠ Failed to cache (continuing)")
+                log.echo(f"  ⚠ Failed to cache (continuing)")
 
             # Update latest tag on main branch
             if cache_config["is_main_branch"]:
@@ -526,8 +656,9 @@ def render_single_model(
 @cli.command()
 @click.option("--output-dir", type=click.Path(path_type=Path), default=Path("artifacts"))
 @click.option("--openscad", default=None, help="OpenSCAD binary path (auto-detected if not set)")
+@jobs_option
 @click.pass_context
-def render(ctx: click.Context, output_dir: Path, openscad: str | None) -> None:
+def render(ctx: click.Context, output_dir: Path, openscad: str | None, jobs: int) -> None:
     """Render all models to STL and PNG preview.
 
     Automatically uses GHCR caching when GITHUB_REPOSITORY is set.
@@ -539,14 +670,22 @@ def render(ctx: click.Context, output_dir: Path, openscad: str | None) -> None:
 
     if cache_config:
         click.echo(f"ORAS caching enabled: {cache_config['registry']}")
+        get_openscad_version(openscad)  # warm the cache before threads race to fill it
 
-    failed = []
-    for f in files:
-        if not render_single_model(f, base_path, output_dir, openscad, cache_config):
-            failed.append(f)
+    def render_one(f: Path) -> bool:
+        log = TaskLog()
+        ok = render_single_model(f, base_path, output_dir, openscad, cache_config, log)
+        flush_log(log)
+        return ok
+
+    with virtual_display():
+        results = run_parallel(render_one, files, jobs)
+    failed = [f for f, ok in zip(files, results) if not ok]
 
     if failed:
         click.echo(f"\n{len(failed)} file(s) failed to render", err=True)
+        for f in failed:
+            click.echo(f"  - {f}", err=True)
         sys.exit(1)
 
     click.echo(f"\n✓ Rendered {len(files)} model(s) to {output_dir}")
@@ -562,14 +701,16 @@ def render_file(ctx: click.Context, file: Path, output_dir: Path, openscad: str 
     base_path = ctx.obj["base_path"]
     openscad = openscad or find_openscad()
 
-    # Resolve file path relative to base_path if needed
-    if not str(file).startswith(str(base_path)):
-        # Try to find it under base_path
-        potential = base_path / file
-        if potential.exists():
-            file = potential
+    # Output names derive from the path under base_path, so normalize to that
+    if not file.resolve().is_relative_to(base_path.resolve()):
+        raise click.ClickException(f"{file} is not under {base_path}")
+    file = base_path / file.resolve().relative_to(base_path.resolve())
 
-    if not render_single_model(file, base_path, output_dir, openscad, cache_config=None):
+    log = TaskLog()
+    with virtual_display():
+        ok = render_single_model(file, base_path, output_dir, openscad, None, log)
+    log.flush()
+    if not ok:
         sys.exit(1)
 
 
@@ -583,25 +724,37 @@ def gui(file: Path, openscad: str | None) -> None:
     click.echo(f"Opened {file} in OpenSCAD")
 
 
+def evaluate_scad(openscad: str, scad_file: Path, hard_warnings: bool) -> subprocess.CompletedProcess:
+    """Evaluate a .scad file to CSG (fast; no CGAL render, no display needed)."""
+    args = ["--hardwarnings"] if hard_warnings else []
+    return run_openscad(openscad, [*args, "--export-format", "csg", "-o", os.devnull, str(scad_file)])
+
+
 @cli.command()
 @click.option("--openscad", default=None, help="OpenSCAD binary path (auto-detected if not set)")
+@jobs_option
 @click.pass_context
-def check(ctx: click.Context, openscad: str | None) -> None:
-    """Validate all models render without errors."""
+def check(ctx: click.Context, openscad: str | None, jobs: int) -> None:
+    """Validate all models evaluate without errors."""
     base_path = ctx.obj["base_path"]
     openscad = openscad or find_openscad()
     files = find_scad_files(base_path)
 
-    failed = []
-    for f in files:
-        click.echo(f"Checking {f}...")
+    def check_one(f: Path) -> bool:
+        log = TaskLog()
+        log.echo(f"Checking {f}...")
+        result = evaluate_scad(openscad, f, hard_warnings=False)
+        # OpenSCAD 2021 exits 0 on many errors (e.g. failed asserts), so also scan output
+        errors = openscad_diagnostics(result, ("ERROR:",))
+        ok = result.returncode == 0 and not errors
+        for line in errors:
+            log.echo(f"  {line}", fg="red")
+        log.echo("  ✓ OK" if ok else "  ✗ FAILED", fg=None if ok else "red")
+        flush_log(log)
+        return ok
 
-        result = run_openscad(openscad, ["--export-format", "csg", "-o", "/dev/null", str(f)])
-        if result.returncode != 0:
-            click.echo(f"  ✗ FAILED")
-            failed.append(f)
-        else:
-            click.echo(f"  ✓ OK")
+    results = run_parallel(check_one, files, jobs)
+    failed = [f for f, ok in zip(files, results) if not ok]
 
     if failed:
         click.echo(f"\n{len(failed)} file(s) failed validation", err=True)
@@ -612,9 +765,14 @@ def check(ctx: click.Context, openscad: str | None) -> None:
 
 @cli.command()
 @click.option("--openscad", default=None, help="OpenSCAD binary path (auto-detected if not set)")
+@jobs_option
 @click.pass_context
-def test(ctx: click.Context, openscad: str | None) -> None:
-    """Run OpenSCAD unit tests."""
+def test(ctx: click.Context, openscad: str | None, jobs: int) -> None:
+    """Run OpenSCAD unit tests.
+
+    A test fails if OpenSCAD exits non-zero or reports any ERROR or WARNING
+    (failed assert(), undefined variables, etc.).
+    """
     base_path = ctx.obj["base_path"]
     openscad = openscad or find_openscad()
     files = find_scad_files(base_path, only_tests=True)
@@ -623,28 +781,31 @@ def test(ctx: click.Context, openscad: str | None) -> None:
         click.echo(f"No test files found in {base_path}")
         sys.exit(0)
 
-    failed = []
-    for f in files:
-        click.echo(f"Running {f}...")
+    def test_one(f: Path) -> bool:
+        log = TaskLog()
+        log.echo(f"Running {f}...")
+        result = evaluate_scad(openscad, f, hard_warnings=True)
 
-        result = run_openscad(
-            openscad, ["--hardwarnings", "-o", "/dev/null", "--export-format", "csg", str(f)]
-        )
+        # Print ECHO output for visibility, and errors/warnings for diagnosis
+        for line in openscad_diagnostics(result, ("ECHO:",)):
+            log.echo(f"  {line}")
+        problems = openscad_diagnostics(result, ("ERROR:", "WARNING:"))
+        for line in problems:
+            log.echo(f"  {line}", fg="red")
 
-        # Print ECHO output for visibility
-        for line in result.stderr.splitlines():
-            if line.startswith("ECHO:"):
-                click.echo(f"  {line}")
-
-        # Check for assertion failures
-        if "Assertion" in result.stderr and "failed" in result.stderr:
-            click.echo(f"  ✗ FAILED")
-            failed.append(f)
-        elif result.returncode != 0:
-            click.echo(f"  ✗ FAILED (exit code {result.returncode})")
-            failed.append(f)
+        ok = False
+        if result.returncode != 0:
+            log.echo(f"  ✗ FAILED (exit code {result.returncode})", fg="red")
+        elif problems:
+            log.echo("  ✗ FAILED", fg="red")
         else:
-            click.echo(f"  ✓ PASSED")
+            log.echo("  ✓ PASSED")
+            ok = True
+        flush_log(log)
+        return ok
+
+    results = run_parallel(test_one, files, jobs)
+    failed = [f for f, ok in zip(files, results) if not ok]
 
     click.echo()
     if failed:
@@ -718,6 +879,7 @@ def find_orca_slicer() -> str:
     )
 
 
+@functools.cache
 def get_orca_version(orca_bin: str) -> str:
     """Get OrcaSlicer version string."""
     try:
@@ -733,10 +895,7 @@ def get_orca_version(orca_bin: str) -> str:
 
 def run_orca_slicer(orca_bin: str, args: list[str]) -> subprocess.CompletedProcess:
     """Run OrcaSlicer, using xvfb-run if needed for headless operation."""
-    cmd = [orca_bin] + args
-    if needs_xvfb():
-        cmd = ["xvfb-run", "--auto-servernum"] + cmd
-    return subprocess.run(cmd, capture_output=True, text=True)
+    return run_headless([orca_bin] + args, needs_display=True)
 
 
 def compute_profiles_hash() -> str:
@@ -757,6 +916,7 @@ def slice_single_model(
     artifacts_dir: Path,
     orca_bin: str,
     cache_config: dict | None,
+    log: TaskLog,
 ) -> bool:
     """
     Slice a single STL model to 3MF, with optional caching.
@@ -766,6 +926,7 @@ def slice_single_model(
         artifacts_dir: Directory containing stl/ and for gcode/ output
         orca_bin: Path to OrcaSlicer binary
         cache_config: ORAS cache configuration or None
+        log: Buffer for this model's output
 
     Returns True on success, False on failure.
     """
@@ -779,7 +940,7 @@ def slice_single_model(
     log_file = logs_dir / f"{model_name}.log"
 
     if not stl_file.exists():
-        click.secho(f"  ✗ STL not found: {stl_file}", fg="red", err=True)
+        log.echo(f"  ✗ STL not found: {stl_file}", fg="red", err=True)
         return False
 
     # Extract project/model from name (e.g., "rack__model" -> "rack/model")
@@ -799,7 +960,7 @@ def slice_single_model(
         )
         oci_ref = f"{oci_base}:{cache_tag}"
 
-        click.echo(f"Checking slice cache for {model_name}...")
+        log.echo(f"Checking slice cache for {model_name}...")
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -811,10 +972,10 @@ def slice_single_model(
                     shutil.copy(cached_3mf, output_file)
                 if cached_log.exists():
                     shutil.copy(cached_log, log_file)
-                click.secho(f"  ✓ Cache hit", fg="green")
+                log.echo(f"  ✓ Cache hit", fg="green")
                 return True
 
-        click.echo(f"  ✗ Cache miss, slicing...")
+        log.echo(f"  ✗ Cache miss, slicing...")
 
     # Build settings argument: machine;process;filament
     settings = f"{ORCA_MACHINE_PROFILE};{ORCA_PROCESS_PROFILE};{ORCA_FILAMENT_PROFILE}"
@@ -823,7 +984,7 @@ def slice_single_model(
     abs_input = stl_file.resolve()
     abs_output = output_file.resolve()
 
-    click.echo(f"Slicing {model_name}...")
+    log.echo(f"Slicing {model_name}...")
     result = run_orca_slicer(
         orca_bin,
         [
@@ -839,13 +1000,13 @@ def slice_single_model(
     log_file.write_text(log_content)
 
     if not output_file.exists():
-        click.secho(f"  ✗ Slicing failed", fg="red", err=True)
+        log.echo(f"  ✗ Slicing failed", fg="red", err=True)
         if log_content:
             for line in log_content.splitlines()[-5:]:
-                click.echo(f"    {line}")
+                log.echo(f"    {line}")
         return False
 
-    click.secho(f"  ✓ OK", fg="green")
+    log.echo(f"  ✓ OK", fg="green")
 
     # Push to cache if enabled
     if cache_config:
@@ -860,9 +1021,9 @@ def slice_single_model(
             ]
 
             if oras_push(oci_ref, push_files, registry):
-                click.echo(f"  ✓ Cached slice for {model_name}")
+                log.echo(f"  ✓ Cached slice for {model_name}")
             else:
-                click.echo(f"  ⚠ Failed to cache slice (continuing)")
+                log.echo(f"  ⚠ Failed to cache slice (continuing)")
 
             # Update latest tag on main branch
             if cache_config["is_main_branch"]:
@@ -874,8 +1035,9 @@ def slice_single_model(
 
 @cli.command()
 @click.option("--output-dir", type=click.Path(path_type=Path), default=Path("artifacts"))
+@jobs_option
 @click.pass_context
-def slice(ctx: click.Context, output_dir: Path) -> None:
+def slice(ctx: click.Context, output_dir: Path, jobs: int) -> None:
     """Slice all rendered STL models to 3MF.
 
     Requires STL files to already be rendered in artifacts/stl/.
@@ -900,24 +1062,29 @@ def slice(ctx: click.Context, output_dir: Path) -> None:
         click.secho("No STL files found. Run 'scad-tools render' first.", fg="red", err=True)
         sys.exit(1)
 
-    failed = []
+    to_slice = []
     skipped = []
-    sliced = 0
-
     for stl_file in stl_files:
         model_name = stl_file.stem
-
-        # Check if excluded
         if model_name in exclusions:
-            reason = exclusions[model_name]
-            click.secho(f"Skipping {model_name}: {reason}", fg="yellow")
+            click.secho(f"Skipping {model_name}: {exclusions[model_name]}", fg="yellow")
             skipped.append(model_name)
-            continue
-
-        if slice_single_model(model_name, output_dir, orca_bin, cache_config):
-            sliced += 1
         else:
-            failed.append(model_name)
+            to_slice.append(model_name)
+
+    if cache_config:
+        get_orca_version(orca_bin)  # warm the cache before threads race to fill it
+
+    def slice_one(model_name: str) -> bool:
+        log = TaskLog()
+        ok = slice_single_model(model_name, output_dir, orca_bin, cache_config, log)
+        flush_log(log)
+        return ok
+
+    with virtual_display():
+        results = run_parallel(slice_one, to_slice, jobs)
+    failed = [name for name, ok in zip(to_slice, results) if not ok]
+    sliced = len(to_slice) - len(failed)
 
     # Summary
     click.echo()

@@ -20,14 +20,20 @@ jobs:
     steps:
     - uses: actions/checkout@v5
       with:
-        submodules: true
         fetch-depth: 1
 
-    - name: Configure git for sparse checkout
+    # Slicing only needs resources/profiles from the OrcaSlicer submodule.
+    # Fetch just that subtree at the pinned commit (blobless + sparse) instead
+    # of checking out the whole OrcaSlicer source tree.
+    - name: Fetch OrcaSlicer profiles
       run: |
+        sha=$(git ls-tree HEAD .orca-slicer | awk '{print $3}')
+        git init -q .orca-slicer
         cd .orca-slicer
+        git remote add origin https://github.com/OrcaSlicer/OrcaSlicer.git
         git sparse-checkout set resources/profiles
-        cd ..
+        git fetch -q --depth 1 --filter=blob:none origin "$sha"
+        git checkout -q FETCH_HEAD
 
     # Plain apt install with a fresh index. The cache action swallowed 404s
     # from a stale mirror index and cached an empty package set, leaving

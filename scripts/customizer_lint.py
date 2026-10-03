@@ -20,6 +20,8 @@ import click
 import tree_sitter as ts
 import tree_sitter_openscad as ts_openscad
 
+from scripts.scad_tools import is_model_file
+
 
 @dataclass
 class LintError:
@@ -405,19 +407,11 @@ def lint_directory(dirpath: Path, recursive: bool = True) -> list[LintResult]:
     - *_constants.scad (shared constants/library files)
     - *_reference.scad (visualization/reference models, not for printing)
     - *_lib.scad (shared library modules)
+
+    See EXCLUDE_SUFFIXES in scad_tools.py.
     """
-    results = []
-
-    # Patterns for non-customizable files
-    exclude_suffixes = ("_test.scad", "_constants.scad", "_reference.scad", "_lib.scad")
-
     pattern = "**/*.scad" if recursive else "*.scad"
-    for scad_file in sorted(dirpath.glob(pattern)):
-        if scad_file.name.endswith(exclude_suffixes):
-            continue
-        results.append(lint_file(scad_file))
-
-    return results
+    return [lint_file(f) for f in sorted(dirpath.glob(pattern)) if is_model_file(f)]
 
 
 def main() -> int:
@@ -455,7 +449,9 @@ def main() -> int:
 
     for path in args.paths:
         if path.is_file():
-            all_results.append(lint_file(path))
+            # Skip tests/libs/constants/references, e.g. when passed by pre-commit
+            if is_model_file(path):
+                all_results.append(lint_file(path))
         elif path.is_dir():
             all_results.extend(lint_directory(path))
         else:

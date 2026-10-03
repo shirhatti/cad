@@ -25,6 +25,10 @@ just slice        # slice rendered STL to 3MF (needs OpenSCAD + OrcaSlicer)
 just render <file>  # render a single file by path
 ```
 
+`render`, `check`, `test`, and `slice` process models in parallel (one per CPU
+by default; pass `-j N` to limit). A unit test fails on any OpenSCAD `ERROR:` or
+`WARNING:` (e.g. a failed `assert()`), since OpenSCAD itself exits 0 on those.
+
 Run `uv run scad-tools --help` to use the CLI directly. The linter is pure
 Python (tree-sitter) and runs without OpenSCAD installed; rendering, checking,
 testing, and slicing require OpenSCAD (and OrcaSlicer for slicing).
