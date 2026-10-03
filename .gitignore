@@ -10,3 +10,6 @@ _site/
 .venv/
 __pycache__/
 *.pyc
+
+# Claude Code agent worktrees (temporary checkouts)
+.claude/worktrees/
