@@ -16,6 +16,7 @@ Usage:
     uv run scad-tools test            # Run unit tests
     uv run scad-tools gui FILE        # Open in OpenSCAD GUI
     uv run scad-tools toolchain install  # Install pinned OpenSCAD + OrcaSlicer
+    uv run scad-tools cache prune     # Dry-run pruning of stale GHCR cache versions
 
 render, check, test, and slice run models in parallel; use -j N to limit.
 Everything runs headless: no display or Xvfb needed (OpenSCAD renders PNG
@@ -1330,6 +1331,10 @@ def gallery(
 from scripts.toolchain import toolchain  # noqa: E402  (imports helpers above)
 
 cli.add_command(toolchain)
+
+from scripts.cache import cache  # noqa: E402
+
+cli.add_command(cache)
 
 
 if __name__ == "__main__":

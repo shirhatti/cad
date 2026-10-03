@@ -82,7 +82,10 @@ hash of both files, so changing either rebuilds and pushes the image to GHCR
 (and mirrors any newly pinned AppImage there). To bump a tool, update its
 `version`/`url`/`sha256` in `toolchain.toml`. Renders and slices
 are cached in GHCR via ORAS, keyed by a content hash of each model plus its
-dependencies (and the OpenSCAD/OrcaSlicer version).
+dependencies (and the OpenSCAD/OrcaSlicer version). `.github/workflows/prune-cache.yml`
+runs `scad-tools cache prune` weekly to delete stale render/slice cache
+versions (dry-run by default locally and for manual runs; it never touches the
+`ci` image or `toolchain/*` mirror).
 
 ## Before committing
 

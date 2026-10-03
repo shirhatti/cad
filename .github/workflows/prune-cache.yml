@@ -1,0 +1,70 @@
+name: Prune GHCR cache
+
+# Every model edit pushes new render/slice cache versions to GHCR and nothing
+# else ever deletes them. This prunes stale versions of the
+# <repo>/renders/* and <repo>/slices/* packages only; the CI image
+# (<repo>/ci) and the toolchain mirror (<repo>/toolchain/*) are never touched.
+# See `uv run scad-tools cache prune --help` for what is kept.
+
+on:
+  schedule:
+    # Weekly, Sunday 06:37 UTC (off the hour to dodge scheduler load spikes)
+    - cron: "37 6 * * 0"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only report what would be deleted"
+        type: boolean
+        default: true
+      keep_days:
+        description: "Keep every version newer than this many days"
+        type: number
+        default: 30
+      keep_last:
+        description: "Keep this many newest tagged versions per package"
+        type: number
+        default: 3
+
+concurrency:
+  group: prune-cache
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 1
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v10.2.0
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Prune render/slice cache
+      env:
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        # The workflow's GITHUB_TOKEN can delete versions of packages this
+        # repository's workflows published (the repo gets the package's Admin
+        # role by default), but may not be allowed to enumerate the owner's
+        # whole package namespace; the tool then falls back to the packages of
+        # models in the current checkout. Set a GHCR_PRUNE_TOKEN secret (PAT
+        # classic with read:packages + delete:packages) to also find and
+        # remove packages of models that have since been deleted.
+        GITHUB_TOKEN: ${{ secrets.GHCR_PRUNE_TOKEN || secrets.GITHUB_TOKEN }}
+        # Scheduled runs delete; manual runs default to a dry run
+        DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        KEEP_DAYS: ${{ inputs.keep_days || 30 }}
+        KEEP_LAST: ${{ inputs.keep_last || 3 }}
+      run: |
+        args=(--keep-days "$KEEP_DAYS" --keep-last "$KEEP_LAST")
+        if [ "$DRY_RUN" != "true" ]; then
+          args+=(--yes)
+        fi
+        uv run scad-tools cache prune "${args[@]}"
