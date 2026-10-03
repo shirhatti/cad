@@ -79,7 +79,7 @@ All commands are thin wrappers around the unified `scad-tools` CLI
 
 ## Orca Slicer Configuration
 
-Printer profiles are loaded from the `.orca-slicer` git submodule (OrcaSlicer upstream). Default settings:
+Printer profiles come from the `.orca-slicer` git submodule (OrcaSlicer upstream), with local overrides in `.orca-profiles-local/`. Default settings:
 - **Printer**: Bambu Lab A1 (0.4mm nozzle)
 - **Process**: 0.20mm Standard layer height
 - **Filament**: Generic PLA
@@ -99,19 +99,24 @@ See `.orca-profiles-local/README.md` for details on profile overrides.
 
 ## Continuous Integration
 
-GitHub Actions automatically validates all models on every push:
+GitHub Actions runs on every branch push and pull request (superseded runs are
+cancelled), in this order:
 
-1. **Syntax Check** - Validates OpenSCAD syntax
-2. **Rendering** - Generates STL files from all `.scad` models
-3. **Slicing** - Generates 3MF files with embedded G-code
-4. **Validation** - Ensures no slicing errors occurred
+1. **Lint** - MakerBot Customizer compliance (`scad-tools lint`)
+2. **Test** - OpenSCAD unit tests (`*_test.scad`)
+3. **Check** - Validates all models render without errors
+4. **Render** - Generates STL + PNG from all `.scad` models
+5. **Slice** - Generates 3MF files with embedded G-code
+
+Renders and slices are cached in GHCR, keyed by a content hash of each model
+and its dependencies.
 
 CI runs inside a prebuilt container image (`ci/Dockerfile`) holding the
 OpenSCAD and OrcaSlicer builds pinned in `toolchain.toml`, so it needs no apt
 installs, downloads, or virtual display. The image is tagged by a hash of
 those two files and rebuilt only when they change.
 
-Build artifacts (STL, 3MF, logs) are uploaded and available for download from the Actions tab.
+Build artifacts (STL, PNG, 3MF, logs) are uploaded and available for download from the Actions tab.
 
 ## Model Gallery (GitHub Pages)
 

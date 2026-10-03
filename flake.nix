@@ -63,7 +63,6 @@
             if [ -d "/Applications/OrcaSlicer.app" ]; then
               ORCA_VERSION=$(/Applications/OrcaSlicer.app/Contents/MacOS/OrcaSlicer --version 2>&1 | head -1 || echo "OrcaSlicer")
               echo "   $ORCA_VERSION"
-              export ORCA_SLICER_PATH="/Applications/OrcaSlicer.app/Contents/MacOS/OrcaSlicer"
             else
               echo "   ⚠️  Orca Slicer not found"
               echo "   Install from: https://github.com/OrcaSlicer/OrcaSlicer/releases"
@@ -72,9 +71,11 @@
             echo ""
             echo "Setup:"
             echo "   just setup           - install Python deps + pre-commit hooks"
+            echo "   just toolchain       - install pinned OpenSCAD + OrcaSlicer (Linux)"
             echo ""
             echo "Linting:"
             echo "   just lint            - check Customizer compliance"
+            echo "   just test / check    - unit tests / validate models render"
             echo "   just pre-commit      - run all pre-commit hooks"
             echo ""
             echo "OpenSCAD:"
@@ -83,7 +84,8 @@
             echo "   just watch           - auto-rebuild on changes"
             echo ""
             echo "Print workflow:"
-            echo "   just prepare FILE    - render + slice + open"
+            echo "   just render FILE     - render a single file"
+            echo "   just slice           - slice rendered STLs to 3MF"
             export VSCODE_PROFILE="openscad"
           '';
         };
