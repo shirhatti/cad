@@ -29,11 +29,14 @@ jobs:
         git sparse-checkout set resources/profiles
         cd ..
 
-    - name: Cache APT packages
-      uses: awalsh128/cache-apt-pkgs-action@latest
-      with:
-        packages: openscad xvfb gstreamer1.0-plugins-base libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 libjavascriptcoregtk-6.0-1
-        version: 1.1
+    # Plain apt install with a fresh index. The cache action swallowed 404s
+    # from a stale mirror index and cached an empty package set, leaving
+    # OpenSCAD silently missing.
+    - name: Install APT packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y openscad xvfb gstreamer1.0-plugins-base libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 libjavascriptcoregtk-6.0-1
+        openscad --version
 
     - name: Install uv
       uses: astral-sh/setup-uv@v6
