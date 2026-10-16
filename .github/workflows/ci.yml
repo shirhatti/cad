@@ -80,21 +80,6 @@ jobs:
       with:
         fetch-depth: 1
 
-    # Slicing only needs resources/profiles from the OrcaSlicer submodule.
-    # Fetch just that subtree at the pinned commit (blobless + sparse) instead
-    # of checking out the whole OrcaSlicer source tree.
-    - name: Fetch OrcaSlicer profiles
-      run: |
-        # The workspace is owned by the runner user, not the container's root
-        git config --global --add safe.directory "$GITHUB_WORKSPACE"
-        sha=$(git ls-tree HEAD .orca-slicer | awk '{print $3}')
-        git init -q .orca-slicer
-        cd .orca-slicer
-        git remote add origin https://github.com/OrcaSlicer/OrcaSlicer.git
-        git sparse-checkout set resources/profiles
-        git fetch -q --depth 1 --filter=blob:none origin "$sha"
-        git checkout -q FETCH_HEAD
-
     - name: Cache uv
       uses: actions/cache@v6
       with:
@@ -103,6 +88,15 @@ jobs:
 
     - name: Sync Python dependencies
       run: uv sync
+
+    # Slicing only needs resources/profiles from the OrcaSlicer submodule;
+    # this fetches just that subtree at the pinned commit (blobless + sparse)
+    # instead of checking out the whole OrcaSlicer source tree.
+    - name: Fetch OrcaSlicer profiles
+      run: |
+        # The workspace is owned by the runner user, not the container's root
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        uv run scad-tools profiles fetch
 
     - name: Test scad-tools CLI
       run: uv run pytest -q

@@ -21,7 +21,8 @@ just lint-strict  # warnings become errors
 just test         # run *_test.scad unit tests (needs OpenSCAD)
 just check        # validate all models render (needs OpenSCAD)
 just build        # render all models to STL + PNG (needs OpenSCAD)
-just slice        # slice rendered STL to 3MF (needs OpenSCAD + OrcaSlicer)
+just profiles     # sparse-fetch the pinned OrcaSlicer profiles (.orca-slicer)
+just slice        # slice rendered STL to 3MF (needs OpenSCAD + OrcaSlicer + profiles)
 just render <file>  # render a single file by path
 just toolchain    # install pinned OpenSCAD + OrcaSlicer (Linux; toolchain.toml)
 ```
@@ -80,7 +81,9 @@ and uploads STL/PNG/3MF/log artifacts. Jobs run in a container image
 (`ci/Dockerfile`) with the toolchain pinned in `toolchain.toml`; its tag is a
 hash of both files, so changing either rebuilds and pushes the image to GHCR
 (and mirrors any newly pinned AppImage there). To bump a tool, update its
-`version`/`url`/`sha256` in `toolchain.toml`. Renders and slices
+`version`/`url`/`sha256` in `toolchain.toml`; for OrcaSlicer, also re-pin the
+`.orca-slicer` submodule to the matching release tag (see
+`.orca-profiles-local/README.md`). Renders and slices
 are cached in GHCR via ORAS, keyed by a content hash of each model plus its
 dependencies (and the OpenSCAD/OrcaSlicer version). `.github/workflows/prune-cache.yml`
 runs `scad-tools cache prune` weekly to delete stale render/slice cache

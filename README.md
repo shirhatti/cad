@@ -13,12 +13,13 @@ Each project is in its own subdirectory under `projects/`:
 ## Quick Start
 
 ```bash
-# Clone with submodules
-git clone --recurse-submodules https://github.com/shirhatti/cad.git
+git clone https://github.com/shirhatti/cad.git
 cd cad
 
-# Or initialize submodules after cloning
-git submodule update --init --depth 1
+# Slicing needs the OrcaSlicer profiles from the .orca-slicer submodule. This
+# fetches only resources/profiles at the pinned commit (as CI does), instead
+# of the whole OrcaSlicer source tree that `git submodule update --init` clones.
+uv run scad-tools profiles fetch
 
 # Optional: Enter Nix development environment
 nix develop
@@ -79,7 +80,9 @@ All commands are thin wrappers around the unified `scad-tools` CLI
 
 ## Orca Slicer Configuration
 
-Printer profiles come from the `.orca-slicer` git submodule (OrcaSlicer upstream), with local overrides in `.orca-profiles-local/`. Default settings:
+Printer profiles come from the `.orca-slicer` git submodule (OrcaSlicer upstream,
+pinned to the release tag matching the OrcaSlicer version in `toolchain.toml`),
+with local overrides in `.orca-profiles-local/`. Default settings:
 - **Printer**: Bambu Lab A1 (0.4mm nozzle)
 - **Process**: 0.20mm Standard layer height
 - **Filament**: Generic PLA

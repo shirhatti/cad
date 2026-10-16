@@ -43,6 +43,10 @@ check: _ensure-uv
 build: _ensure-uv
     uv run scad-tools render
 
+# Fetch the pinned OrcaSlicer profiles (sparse; no full submodule clone)
+profiles: _ensure-uv
+    uv run scad-tools profiles fetch
+
 # Slice all STL models to 3MF
 slice: _ensure-uv
     uv run scad-tools slice

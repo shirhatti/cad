@@ -69,22 +69,29 @@ estimates, when judging a profile change.
 
 ## Updating
 
-When updating the OrcaSlicer submodule:
+Keep the submodule pinned to the OrcaSlicer **release tag** matching the
+`[tools.orcaslicer]` version in `toolchain.toml` (currently `v2.3.1`), not to
+`main`: profiles from a newer development tree can use keys or values the
+pinned slicer binary doesn't understand. Bump both together:
 
 ```bash
-cd .orca-slicer
-git pull origin main
-cd ..
-git add .orca-slicer
-git commit -m "Update OrcaSlicer profiles"
+# 1. Update version/url/sha256 under [tools.orcaslicer] in toolchain.toml
+# 2. Re-pin the submodule to the matching tag (no full clone needed)
+sha=$(git ls-remote https://github.com/OrcaSlicer/OrcaSlicer.git 'refs/tags/vX.Y.Z' 'refs/tags/vX.Y.Z^{}' | tail -1 | cut -f1)
+git update-index --cacheinfo "160000,$sha,.orca-slicer"
+git commit -m "Bump OrcaSlicer to X.Y.Z"
+# 3. Fetch the new profiles and re-slice to check the overrides still apply
+uv run scad-tools profiles fetch
+just slice
 ```
 
-CI does not clone the whole submodule. The "Fetch OrcaSlicer profiles" step in
-`.github/workflows/ci.yml` reads the pinned commit from the submodule gitlink
-(`git ls-tree HEAD .orca-slicer`) and does a blobless, depth-1, sparse fetch of
-only `resources/profiles` at that commit. So the bump must be committed (and the
-commit must exist upstream) for CI to pick it up, and anything outside
-`resources/profiles` is not available to slicing in CI.
+Nobody clones the whole submodule. `uv run scad-tools profiles fetch` (also the
+"Fetch OrcaSlicer profiles" step in `.github/workflows/ci.yml`) reads the
+pinned commit from the submodule gitlink and does a blobless, depth-1, sparse
+fetch of only `resources/profiles` at that commit. So the bump must be committed
+(and the commit must exist upstream) for it to be picked up, and anything outside
+`resources/profiles` is not available to slicing. The pinned commit is part of
+the slice cache key, so a bump re-slices every model.
 
 The local overrides will continue to work unless upstream changes the machine or process profile structure significantly.
 

@@ -11,6 +11,7 @@ Usage:
     uv run scad-tools lint            # Lint all models
     uv run scad-tools render          # Render all models to STL + PNG
     uv run scad-tools render-file F   # Render single file
+    uv run scad-tools profiles fetch  # Sparse-fetch the pinned OrcaSlicer profiles
     uv run scad-tools slice           # Slice all STL to 3MF
     uv run scad-tools check           # Validate models render
     uv run scad-tools test            # Run unit tests
@@ -776,12 +777,16 @@ def test(ctx: click.Context, openscad: str | None, jobs: int) -> None:
 # =============================================================================
 
 
-def get_slice_exclusions() -> dict[str, str]:
+def get_slice_exclusions(base_path: Path) -> dict[str, str]:
     """
     Get slice exclusions from pyproject.toml.
 
-    Config uses real paths (e.g., "rack/wiim_amp_retention_bracket.scad").
+    Config uses real paths relative to base_path (e.g., "rack/wiim_amp_retention_bracket.scad").
     Returns dict mapping output names (e.g., "rack__wiim_amp_retention_bracket") to exclusion reasons.
+
+    A malformed config is an error rather than "no exclusions", which would
+    otherwise surface later as a confusing slice failure; an entry naming a
+    model that doesn't exist (e.g. after a rename) only warns.
     """
     pyproject = Path("pyproject.toml")
     if not pyproject.exists():
@@ -790,17 +795,23 @@ def get_slice_exclusions() -> dict[str, str]:
     try:
         with open(pyproject, "rb") as f:
             config = tomllib.load(f)
-        raw_exclusions = config.get("tool", {}).get("scad-tools", {}).get("slice", {}).get("exclude", {})
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        raise click.ClickException(f"Can't read slice exclusions from {pyproject}: {e}")
+    raw_exclusions = config.get("tool", {}).get("scad-tools", {}).get("slice", {}).get("exclude", {})
+    if not isinstance(raw_exclusions, dict):
+        raise click.ClickException(
+            f"[tool.scad-tools.slice.exclude] in {pyproject} must be a table of \"path\" = \"reason\""
+        )
 
-        # Convert paths to output names: "rack/model.scad" -> "rack__model"
-        exclusions = {}
-        for path, reason in raw_exclusions.items():
-            # Remove .scad extension and replace / with __
-            output_name = path.removesuffix(".scad").replace("/", "__")
-            exclusions[output_name] = reason
-        return exclusions
-    except Exception:
-        return {}
+    # Convert paths to output names: "rack/model.scad" -> "rack__model"
+    exclusions = {}
+    for path, reason in raw_exclusions.items():
+        if not (base_path / path).is_file():
+            click.secho(f"⚠ Slice exclusion matches no model: {base_path / path}", fg="yellow", err=True)
+        # Remove .scad extension and replace / with __
+        output_name = path.removesuffix(".scad").replace("/", "__")
+        exclusions[output_name] = reason
+    return exclusions
 
 
 # =============================================================================
@@ -813,6 +824,26 @@ ORCA_PROFILES_LOCAL = Path(".orca-profiles-local/BBL")
 ORCA_MACHINE_PROFILE = ORCA_PROFILES_LOCAL / "machine/Bambu Lab A1 0.4 nozzle.json"
 ORCA_PROCESS_PROFILE = ORCA_PROFILES_LOCAL / "process/0.20mm Standard @BBL A1.json"
 ORCA_FILAMENT_PROFILE = ORCA_PROFILES_UPSTREAM / "filament/Generic PLA @BBL A1.json"
+ORCA_PROFILES = (ORCA_MACHINE_PROFILE, ORCA_PROCESS_PROFILE, ORCA_FILAMENT_PROFILE)
+
+# The upstream profiles come from this submodule, pinned to the OrcaSlicer
+# release in toolchain.toml. Slicing only needs its resources/profiles subtree.
+ORCA_SUBMODULE = Path(".orca-slicer")
+ORCA_UPSTREAM_URL = "https://github.com/OrcaSlicer/OrcaSlicer.git"
+ORCA_PROFILES_SUBTREE = "resources/profiles"
+
+
+@functools.cache
+def orca_profiles_commit() -> str | None:
+    """
+    The commit the .orca-slicer submodule is pinned to at HEAD (its gitlink),
+    readable without the submodule being checked out. None outside a git
+    checkout or if the submodule isn't recorded.
+    """
+    result = subprocess.run(
+        ["git", "rev-parse", f"HEAD:{ORCA_SUBMODULE}"], capture_output=True, text=True
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def find_orca_slicer() -> str:
@@ -836,18 +867,19 @@ def find_orca_slicer() -> str:
     )
 
 
+# The --help banner, e.g. "OrcaSlicer-2.3.1:" (older builds: "OrcaSlicer v2.3.1")
+_ORCA_VERSION_RE = re.compile(r"OrcaSlicer[- ]v?(\d+\.\d+[\w.+-]*\w)")
+
+
 @functools.cache
 def get_orca_version(orca_bin: str) -> str:
-    """Get OrcaSlicer version string."""
+    """Get the OrcaSlicer version (e.g. "2.3.1") from its --help banner."""
     try:
         result = subprocess.run([orca_bin, "--help"], capture_output=True, text=True)
-        # Extract version from help output (e.g., "OrcaSlicer v2.3.1")
-        for line in result.stdout.splitlines() + result.stderr.splitlines():
-            if "v" in line.lower() and "." in line:
-                return line.strip()
+    except OSError:
         return "unknown"
-    except Exception:
-        return "unknown"
+    match = _ORCA_VERSION_RE.search(result.stdout + "\n" + result.stderr)
+    return match.group(1) if match else "unknown"
 
 
 def run_orca_slicer(orca_bin: str, args: list[str]) -> subprocess.CompletedProcess:
@@ -941,16 +973,25 @@ def inject_3mf_thumbnail(threemf: Path, png: Path) -> bool:
 
 
 def compute_profiles_hash() -> str:
-    """Compute hash of local slicer profile overrides."""
-    local_profiles = Path(".orca-profiles-local")
-    if not local_profiles.exists():
-        return "no-local-profiles"
-
+    """
+    Hash the slicer profiles: the local overrides (names and contents) plus the
+    pinned upstream commit, since the filament profile and every override's
+    `inherits` chain resolve into the upstream tree.
+    """
     hasher = hashlib.sha256()
-    for profile_file in sorted(local_profiles.rglob("*")):
-        if profile_file.is_file():
-            hasher.update(profile_file.read_bytes())
+    hasher.update(f"upstream:{orca_profiles_commit() or 'unpinned'}\n".encode())
+    local_profiles = Path(".orca-profiles-local")
+    if local_profiles.exists():
+        for profile_file in sorted(local_profiles.rglob("*")):
+            if profile_file.is_file():
+                hasher.update(f"{profile_file.relative_to(local_profiles)}\n".encode())
+                hasher.update(profile_file.read_bytes())
     return hasher.hexdigest()[:16]
+
+
+def missing_orca_profiles() -> list[Path]:
+    """Slicer profiles that aren't on disk (e.g. the submodule isn't fetched)."""
+    return [p for p in ORCA_PROFILES if not p.is_file()]
 
 
 def slice_single_model(
@@ -1025,9 +1066,7 @@ def slice_single_model(
         log.echo(f"  ✗ Cache miss, slicing...")
 
     # Build settings argument: machine;process;filament
-    settings = ";".join(
-        str(p.resolve()) for p in (ORCA_MACHINE_PROFILE, ORCA_PROCESS_PROFILE, ORCA_FILAMENT_PROFILE)
-    )
+    settings = ";".join(str(p.resolve()) for p in ORCA_PROFILES)
 
     # Make paths absolute for OrcaSlicer
     abs_input = stl_file.resolve()
@@ -1105,8 +1144,17 @@ def slice(ctx: click.Context, output_dir: Path, jobs: int) -> None:
     Models can be excluded in pyproject.toml [tool.scad-tools.slice.exclude].
     """
     orca_bin = find_orca_slicer()
+    # Fail once up front rather than once per model with OrcaSlicer's log
+    missing = missing_orca_profiles()
+    if missing:
+        listing = "\n".join(f"  {p}" for p in missing)
+        raise click.ClickException(
+            f"Slicer profile(s) not found:\n{listing}\n"
+            "Fetch the pinned OrcaSlicer profiles with `uv run scad-tools profiles fetch` "
+            "(or `git submodule update --init --depth 1`)."
+        )
     cache_config = get_cache_config()
-    exclusions = get_slice_exclusions()
+    exclusions = get_slice_exclusions(ctx.obj["base_path"])
 
     if cache_config:
         click.echo(f"ORAS caching enabled: {cache_config['registry']}")
@@ -1156,6 +1204,57 @@ def slice(ctx: click.Context, output_dir: Path, jobs: int) -> None:
         sys.exit(1)
 
     click.echo(f"✓ Sliced {sliced} model(s) to {output_dir / 'gcode'}")
+
+
+@cli.group()
+def profiles() -> None:
+    """Manage the upstream OrcaSlicer printer profiles."""
+
+
+def _git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+
+
+@profiles.command()
+@click.option("--remote", default=ORCA_UPSTREAM_URL, show_default=True, help="Repository to fetch from")
+def fetch(remote: str) -> None:
+    """Fetch the pinned OrcaSlicer profiles into .orca-slicer.
+
+    Reads the commit from the .orca-slicer submodule gitlink and does a
+    blobless, depth-1, sparse fetch of only resources/profiles at that commit,
+    instead of cloning the whole OrcaSlicer source tree. Idempotent; an
+    existing submodule checkout is moved to the pinned commit but keeps its
+    own sparse-checkout settings.
+    """
+    sha = orca_profiles_commit()
+    if not sha:
+        raise click.ClickException(f"No {ORCA_SUBMODULE} submodule pinned at HEAD (not in the repo root?)")
+
+    dest = ORCA_SUBMODULE
+    dest.mkdir(exist_ok=True)
+    # An uninitialized submodule is an empty dir, where git commands resolve
+    # to the parent repo; only treat dest as a checkout if it is its own root.
+    toplevel = _git("rev-parse", "--show-toplevel", cwd=dest).stdout.strip()
+    is_checkout = bool(toplevel) and Path(toplevel).resolve() == dest.resolve()
+
+    if is_checkout and _git("rev-parse", "HEAD", cwd=dest).stdout.strip() == sha:
+        click.echo(f"✓ {dest} already at {sha[:12]}")
+        return
+    if not is_checkout:
+        for args in (("init", "-q"), ("sparse-checkout", "set", ORCA_PROFILES_SUBTREE)):
+            result = _git(*args, cwd=dest)
+            if result.returncode != 0:
+                raise click.ClickException(f"git {' '.join(args)} failed: {result.stderr.strip()}")
+
+    if _git("cat-file", "-e", f"{sha}^{{commit}}", cwd=dest).returncode != 0:
+        click.echo(f"Fetching {ORCA_PROFILES_SUBTREE} at {sha[:12]} from {remote}...")
+        result = _git("fetch", "-q", "--depth", "1", "--filter=blob:none", remote, sha, cwd=dest)
+        if result.returncode != 0:
+            raise click.ClickException(f"git fetch failed: {result.stderr.strip()}")
+    result = _git("checkout", "-q", sha, cwd=dest)
+    if result.returncode != 0:
+        raise click.ClickException(f"git checkout failed: {result.stderr.strip()}")
+    click.secho(f"✓ {dest} at {sha[:12]}", fg="green")
 
 
 # =============================================================================
