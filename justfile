@@ -47,9 +47,25 @@ build: _ensure-uv
 profiles: _ensure-uv
     uv run scad-tools profiles fetch
 
-# Slice all STL models to 3MF
+# Check slicer profiles resolve and local overrides are live and spelled right
+profiles-lint: _ensure-uv
+    uv run scad-tools profiles lint
+
+# Mesh checks on rendered STLs (watertight, bodies, plate fit, walls, overhangs)
+mesh: _ensure-uv
+    uv run scad-tools mesh
+
+# Slice all STL models to 3MF, verifying slicer settings and print budgets
 slice: _ensure-uv
     uv run scad-tools slice
+
+# Render, check, and slice everything, then update print-metrics.json
+snapshot: build mesh slice
+    uv run scad-tools metrics snapshot
+
+# Show print-metric changes against the committed print-metrics.json
+metrics-diff: _ensure-uv
+    uv run scad-tools metrics diff print-metrics.json
 
 # Build the static three.js gallery site into _site/ (run `build` first)
 gallery: _ensure-uv

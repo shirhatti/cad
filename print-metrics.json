@@ -1,0 +1,269 @@
+{
+  "binder/dual_phone_case.scad": {
+    "mesh": {
+      "bed_contact_mm2": 23877.6,
+      "bodies": 2,
+      "fits_plate": true,
+      "min_wall_mm": 1.99,
+      "overhang_mm2": 1713.1,
+      "size_mm": [
+        167.8,
+        160.3,
+        18.1
+      ],
+      "triangles": 3206,
+      "volume_cm3": 108.8,
+      "watertight": true
+    },
+    "slice": {
+      "bridge_pct": 0.4,
+      "features": [
+        "Bottom surface",
+        "Bridge",
+        "Brim",
+        "Custom",
+        "Gap infill",
+        "Inner wall",
+        "Internal Bridge",
+        "Internal solid infill",
+        "Outer wall",
+        "Overhang wall",
+        "Sparse infill",
+        "Support",
+        "Support interface",
+        "Top surface"
+      ],
+      "filament_g": 95.5,
+      "filament_m": 32.03,
+      "fits_plate": true,
+      "height_mm": 18.0,
+      "layers": 90,
+      "max_bridge_mm": 0.0,
+      "overhang_wall_pct": 0.1,
+      "support_pct": 8.1,
+      "supports": true,
+      "time_s": 10821
+    }
+  },
+  "desk/lenovo_135w_adapter_clamp.scad": {
+    "mesh": {
+      "bed_contact_mm2": 1016.8,
+      "bodies": 2,
+      "fits_plate": true,
+      "min_wall_mm": 2.99,
+      "overhang_mm2": 52.0,
+      "size_mm": [
+        107.0,
+        61.0,
+        20.0
+      ],
+      "triangles": 1640,
+      "volume_cm3": 19.87,
+      "watertight": true
+    },
+    "slice": {
+      "bridge_pct": 0.1,
+      "features": [
+        "Bottom surface",
+        "Bridge",
+        "Custom",
+        "Inner wall",
+        "Internal Bridge",
+        "Internal solid infill",
+        "Outer wall",
+        "Overhang wall",
+        "Sparse infill",
+        "Support",
+        "Support interface",
+        "Top surface"
+      ],
+      "filament_g": 17.2,
+      "filament_m": 5.75,
+      "fits_plate": true,
+      "height_mm": 20.0,
+      "layers": 100,
+      "max_bridge_mm": 0.0,
+      "overhang_wall_pct": 0.0,
+      "support_pct": 5.4,
+      "supports": true,
+      "time_s": 2820
+    }
+  },
+  "rack/apple_tv_retention_bracket.scad": {
+    "mesh": {
+      "bed_contact_mm2": 4468.3,
+      "bodies": 1,
+      "fits_plate": true,
+      "min_wall_mm": 1.02,
+      "overhang_mm2": 1330.0,
+      "size_mm": [
+        152.0,
+        106.5,
+        38.0
+      ],
+      "triangles": 2904,
+      "volume_cm3": 93.21,
+      "watertight": true
+    },
+    "slice": {
+      "bridge_pct": 0.5,
+      "features": [
+        "Bottom surface",
+        "Bridge",
+        "Brim",
+        "Custom",
+        "Gap infill",
+        "Inner wall",
+        "Internal Bridge",
+        "Internal solid infill",
+        "Outer wall",
+        "Overhang wall",
+        "Sparse infill",
+        "Support",
+        "Support interface",
+        "Top surface"
+      ],
+      "filament_g": 53.8,
+      "filament_m": 18.04,
+      "fits_plate": true,
+      "height_mm": 38.0,
+      "layers": 190,
+      "max_bridge_mm": 0.0,
+      "overhang_wall_pct": 0.1,
+      "support_pct": 11.9,
+      "supports": true,
+      "time_s": 7381
+    }
+  },
+  "rack/wiim_amp_retention_bracket.scad": {
+    "mesh": {
+      "bed_contact_mm2": 8894.3,
+      "bodies": 1,
+      "fits_plate": true,
+      "min_wall_mm": 1.02,
+      "overhang_mm2": 3240.0,
+      "size_mm": [
+        252.0,
+        202.0,
+        66.0
+      ],
+      "triangles": 2896,
+      "volume_cm3": 197.19,
+      "watertight": true
+    },
+    "slice": {
+      "bridge_pct": 0.5,
+      "features": [
+        "Bottom surface",
+        "Bridge",
+        "Brim",
+        "Custom",
+        "Gap infill",
+        "Inner wall",
+        "Internal Bridge",
+        "Internal solid infill",
+        "Outer wall",
+        "Overhang wall",
+        "Sparse infill",
+        "Support",
+        "Support interface",
+        "Top surface"
+      ],
+      "filament_g": 137.6,
+      "filament_m": 46.13,
+      "fits_plate": true,
+      "height_mm": 66.0,
+      "layers": 330,
+      "max_bridge_mm": 0.0,
+      "overhang_wall_pct": 0.1,
+      "support_pct": 27.6,
+      "supports": true,
+      "time_s": 16887
+    }
+  },
+  "test/test_cube.scad": {
+    "mesh": {
+      "bed_contact_mm2": 100.0,
+      "bodies": 1,
+      "fits_plate": true,
+      "min_wall_mm": 10.0,
+      "overhang_mm2": 0.0,
+      "size_mm": [
+        10.0,
+        10.0,
+        10.0
+      ],
+      "triangles": 12,
+      "volume_cm3": 1.0,
+      "watertight": true
+    },
+    "slice": {
+      "bridge_pct": 0.0,
+      "features": [
+        "Bottom surface",
+        "Custom",
+        "Inner wall",
+        "Internal Bridge",
+        "Internal solid infill",
+        "Outer wall",
+        "Sparse infill",
+        "Top surface"
+      ],
+      "filament_g": 0.7,
+      "filament_m": 0.23,
+      "fits_plate": true,
+      "height_mm": 10.0,
+      "layers": 50,
+      "max_bridge_mm": 0.0,
+      "overhang_wall_pct": 0.0,
+      "support_pct": 0.0,
+      "supports": false,
+      "time_s": 785
+    }
+  },
+  "wall/elitemini_800_g9_wall_mount.scad": {
+    "mesh": {
+      "bed_contact_mm2": 16352.1,
+      "bodies": 1,
+      "fits_plate": true,
+      "min_wall_mm": 3.02,
+      "overhang_mm2": 2338.2,
+      "size_mm": [
+        187.0,
+        184.0,
+        42.0
+      ],
+      "triangles": 1668,
+      "volume_cm3": 142.64,
+      "watertight": true
+    },
+    "slice": {
+      "bridge_pct": 0.4,
+      "features": [
+        "Bottom surface",
+        "Bridge",
+        "Brim",
+        "Custom",
+        "Inner wall",
+        "Internal Bridge",
+        "Internal solid infill",
+        "Outer wall",
+        "Overhang wall",
+        "Sparse infill",
+        "Support",
+        "Support interface",
+        "Top surface"
+      ],
+      "filament_g": 122.9,
+      "filament_m": 41.19,
+      "fits_plate": true,
+      "height_mm": 42.0,
+      "layers": 210,
+      "max_bridge_mm": 0.0,
+      "overhang_wall_pct": 0.1,
+      "support_pct": 19.9,
+      "supports": true,
+      "time_s": 14813
+    }
+  }
+}

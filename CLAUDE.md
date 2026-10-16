@@ -22,7 +22,10 @@ just test         # run *_test.scad unit tests (needs OpenSCAD)
 just check        # validate all models render (needs OpenSCAD)
 just build        # render all models to STL + PNG (needs OpenSCAD)
 just profiles     # sparse-fetch the pinned OrcaSlicer profiles (.orca-slicer)
-just slice        # slice rendered STL to 3MF (needs OpenSCAD + OrcaSlicer + profiles)
+just profiles-lint  # broken inheritance, typo'd keys, no-op local overrides
+just mesh         # mesh checks + metrics on rendered STLs (no slicer needed)
+just slice        # slice rendered STL to 3MF; verify settings + expectations
+just snapshot     # build + mesh + slice, then update print-metrics.json
 just render <file>  # render a single file by path
 just toolchain    # install pinned OpenSCAD + OrcaSlicer (Linux; toolchain.toml)
 ```
@@ -72,11 +75,22 @@ Artifact output names are `<project>__<model>` (e.g.
   Run `just lint` to verify.
 - Models too large for the build plate (or otherwise unsliceable) are excluded
   in `pyproject.toml` under `[tool.scad-tools.slice.exclude]` with a reason.
+- Every printable model gets expectations in `pyproject.toml` under
+  `[tool.scad-tools.expect.models."<project>/<model>.scad"]`: at least
+  `max_time` and `max_filament_g` (about 15% above the sliced values), plus
+  `bodies` if it isn't one part, and `supports = false` if it's designed
+  support-free.
+- After changing a model, slicer profile, or the toolchain, run `just snapshot`
+  and commit `print-metrics.json`; CI fails when it's stale. Review its diff:
+  that's the change in print time, filament, and supports.
+- The OrcaSlicer CLI does not resolve profile `inherits`; never pass raw
+  profile files to it. `scad-tools slice` flattens them (`scripts/profiles.py`)
+  and verifies the 3MF's settings afterwards.
 
 ## CI
 
-`.github/workflows/ci.yml` runs pytest → lint → test → check → render → slice
-on every branch push and pull request (superseded runs on a ref are auto-cancelled),
+`.github/workflows/ci.yml` runs pytest → lint (+ profile lint) → test → check →
+render → mesh → slice → print-metrics report/check on every branch push and pull request (superseded runs on a ref are auto-cancelled),
 and uploads STL/PNG/3MF/log artifacts. Jobs run in a container image
 (`ci/Dockerfile`) with the toolchain pinned in `toolchain.toml`; its tag is a
 hash of both files, so changing either rebuilds and pushes the image to GHCR

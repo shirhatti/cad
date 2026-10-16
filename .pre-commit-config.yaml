@@ -22,6 +22,14 @@ repos:
         files: \.scad$
         pass_filenames: false
 
+      - id: slicer-profiles-lint
+        name: Slicer Profile Lint
+        description: Check local OrcaSlicer overrides resolve and change something
+        entry: uv run scad-tools profiles lint
+        language: system
+        files: ^\.orca-profiles-local/.*\.json$
+        pass_filenames: false
+
       - id: scad-tools-pytest
         name: scad-tools Python Tests
         description: Run the pytest suite for the scad-tools CLI (tests/)

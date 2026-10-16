@@ -72,6 +72,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      pull-requests: write  # print-metrics comment
     env:
       UV_CACHE_DIR: /tmp/uv-cache
 
@@ -104,6 +105,9 @@ jobs:
     - name: Lint OpenSCAD files
       run: uv run scad-tools lint
 
+    - name: Lint slicer profiles
+      run: uv run scad-tools profiles lint
+
     - name: Run OpenSCAD unit tests
       run: uv run scad-tools test
 
@@ -117,12 +121,56 @@ jobs:
         GITHUB_REF_NAME: ${{ github.ref_name }}
       run: uv run scad-tools render
 
+    - name: Check meshes
+      run: uv run scad-tools mesh
+
     - name: Slice models
       env:
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITHUB_REF_NAME: ${{ github.ref_name }}
       run: uv run scad-tools slice
+
+    # The diff a PR makes to each model's print time, filament, supports, ...
+    # against the base branch's committed print-metrics.json; on pushes,
+    # against this commit's own snapshot (i.e. what's not yet committed).
+    - name: Print-metrics report
+      if: ${{ !cancelled() }}
+      env:
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        if [ -n "$BASE_REF" ] && git fetch -q --depth 1 origin "$BASE_REF"; then
+          git show FETCH_HEAD:print-metrics.json > "$RUNNER_TEMP/base-metrics.json" 2>/dev/null || true
+          title="Print metrics vs $BASE_REF"
+        else
+          cp print-metrics.json "$RUNNER_TEMP/base-metrics.json" 2>/dev/null || true
+          title="Print metrics vs committed snapshot"
+        fi
+        uv run scad-tools metrics diff "$RUNNER_TEMP/base-metrics.json" --title "$title" > print-metrics-report.md
+        cat print-metrics-report.md >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Comment print metrics on PR
+      if: ${{ !cancelled() && github.event_name == 'pull_request' && hashFiles('print-metrics-report.md') != '' }}
+      # Fork PRs get a read-only token; the job summary still has the report
+      continue-on-error: true
+      uses: actions/github-script@v8
+      with:
+        script: |
+          const fs = require('fs');
+          const marker = '<!-- print-metrics -->';
+          const body = `${marker}\n${fs.readFileSync('print-metrics-report.md', 'utf8')}`;
+          const { owner, repo } = context.repo;
+          const issue_number = context.issue.number;
+          const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+          const mine = comments.find(c => c.user.type === 'Bot' && c.body.startsWith(marker));
+          if (mine) {
+            await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+          } else {
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });
+          }
+
+    - name: Check print-metrics.json is up to date
+      run: uv run scad-tools metrics check
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v7
@@ -134,4 +182,6 @@ jobs:
           artifacts/preview/*.png
           artifacts/gcode/*.3mf
           artifacts/logs/*.log
+          artifacts/metrics/*.json
+          artifacts/profiles/*.json
         retention-days: 7

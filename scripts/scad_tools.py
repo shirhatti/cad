@@ -12,7 +12,10 @@ Usage:
     uv run scad-tools render          # Render all models to STL + PNG
     uv run scad-tools render-file F   # Render single file
     uv run scad-tools profiles fetch  # Sparse-fetch the pinned OrcaSlicer profiles
-    uv run scad-tools slice           # Slice all STL to 3MF
+    uv run scad-tools profiles lint   # Check slicer profiles resolve; flag dead overrides
+    uv run scad-tools mesh            # Mesh checks + metrics on rendered STLs
+    uv run scad-tools slice           # Slice all STL to 3MF, verify settings + budgets
+    uv run scad-tools metrics check   # Fail if print-metrics.json is stale
     uv run scad-tools check           # Validate models render
     uv run scad-tools test            # Run unit tests
     uv run scad-tools gui FILE        # Open in OpenSCAD GUI
@@ -49,6 +52,20 @@ from typing import Callable, Iterable, TypeVar
 
 import click
 import oras.client
+
+from scripts.expect import evaluate, expectations_for, format_duration, load_expectations
+from scripts.mesh import bed_size, mesh_metrics
+from scripts.profiles import (
+    ORCA_MACHINE_PROFILE,
+    flatten_profile,
+    local_override_keys,
+    missing_orca_profiles,
+    require_profiles,
+    verify_effective_settings,
+    write_flat_profiles,
+)
+from scripts.slice_metrics import effective_settings, threemf_metrics
+from scripts.snapshot import model_rel_path
 
 # Central exclusion patterns - the single source of truth
 EXCLUDE_SUFFIXES = {
@@ -818,34 +835,6 @@ def get_slice_exclusions(base_path: Path) -> dict[str, str]:
 # OrcaSlicer Support
 # =============================================================================
 
-# Default profile paths (relative to repo root)
-ORCA_PROFILES_UPSTREAM = Path(".orca-slicer/resources/profiles/BBL")
-ORCA_PROFILES_LOCAL = Path(".orca-profiles-local/BBL")
-ORCA_MACHINE_PROFILE = ORCA_PROFILES_LOCAL / "machine/Bambu Lab A1 0.4 nozzle.json"
-ORCA_PROCESS_PROFILE = ORCA_PROFILES_LOCAL / "process/0.20mm Standard @BBL A1.json"
-ORCA_FILAMENT_PROFILE = ORCA_PROFILES_UPSTREAM / "filament/Generic PLA @BBL A1.json"
-ORCA_PROFILES = (ORCA_MACHINE_PROFILE, ORCA_PROCESS_PROFILE, ORCA_FILAMENT_PROFILE)
-
-# The upstream profiles come from this submodule, pinned to the OrcaSlicer
-# release in toolchain.toml. Slicing only needs its resources/profiles subtree.
-ORCA_SUBMODULE = Path(".orca-slicer")
-ORCA_UPSTREAM_URL = "https://github.com/OrcaSlicer/OrcaSlicer.git"
-ORCA_PROFILES_SUBTREE = "resources/profiles"
-
-
-@functools.cache
-def orca_profiles_commit() -> str | None:
-    """
-    The commit the .orca-slicer submodule is pinned to at HEAD (its gitlink),
-    readable without the submodule being checked out. None outside a git
-    checkout or if the submodule isn't recorded.
-    """
-    result = subprocess.run(
-        ["git", "rev-parse", f"HEAD:{ORCA_SUBMODULE}"], capture_output=True, text=True
-    )
-    return result.stdout.strip() if result.returncode == 0 else None
-
-
 def find_orca_slicer() -> str:
     """
     Find OrcaSlicer binary, checking platform-specific locations.
@@ -875,7 +864,9 @@ _ORCA_VERSION_RE = re.compile(r"OrcaSlicer[- ]v?(\d+\.\d+[\w.+-]*\w)")
 def get_orca_version(orca_bin: str) -> str:
     """Get the OrcaSlicer version (e.g. "2.3.1") from its --help banner."""
     try:
-        result = subprocess.run([orca_bin, "--help"], capture_output=True, text=True)
+        # A scratch cwd: the CLI drops a result.json even for --help
+        with tempfile.TemporaryDirectory() as scratch:
+            result = subprocess.run([orca_bin, "--help"], capture_output=True, text=True, cwd=scratch)
     except OSError:
         return "unknown"
     match = _ORCA_VERSION_RE.search(result.stdout + "\n" + result.stderr)
@@ -898,7 +889,7 @@ def run_orca_slicer(orca_bin: str, args: list[str]) -> subprocess.CompletedProce
 
 # Bump to invalidate cached slices when slice_single_model's output changes in
 # a way the cache tag can't see (e.g. post-processing of the exported 3MF).
-SLICE_CACHE_VERSION = "1"
+SLICE_CACHE_VERSION = "2"
 
 # Plate thumbnail entries as OrcaSlicer's GUI writes them (v2.3.1,
 # src/libslic3r/Format/bbs_3mf.{hpp,cpp}): THUMBNAIL_FILE_FORMAT
@@ -972,32 +963,69 @@ def inject_3mf_thumbnail(threemf: Path, png: Path) -> bool:
     return True
 
 
-def compute_profiles_hash() -> str:
+def compute_profiles_hash(flat_profiles: dict[str, Path]) -> str:
     """
-    Hash the slicer profiles: the local overrides (names and contents) plus the
-    pinned upstream commit, since the filament profile and every override's
-    `inherits` chain resolve into the upstream tree.
+    Hash the flattened slicer profiles: exactly the settings the slicer is
+    given, so an upstream bump or a local override change both re-slice.
     """
     hasher = hashlib.sha256()
-    hasher.update(f"upstream:{orca_profiles_commit() or 'unpinned'}\n".encode())
-    local_profiles = Path(".orca-profiles-local")
-    if local_profiles.exists():
-        for profile_file in sorted(local_profiles.rglob("*")):
-            if profile_file.is_file():
-                hasher.update(f"{profile_file.relative_to(local_profiles)}\n".encode())
-                hasher.update(profile_file.read_bytes())
+    for kind, path in sorted(flat_profiles.items()):
+        hasher.update(f"{kind}\n".encode())
+        hasher.update(path.read_bytes())
     return hasher.hexdigest()[:16]
 
 
-def missing_orca_profiles() -> list[Path]:
-    """Slicer profiles that aren't on disk (e.g. the submodule isn't fetched)."""
-    return [p for p in ORCA_PROFILES if not p.is_file()]
+def check_sliced_model(
+    model_name: str,
+    threemf: Path,
+    flat: dict[str, dict],
+    local_keys: dict[str, set[str]],
+    expected: dict,
+    metrics_dir: Path,
+    log: TaskLog,
+) -> bool:
+    """
+    Post-slice checks on one 3MF (fresh or from the cache):
+
+    1. The slicer applied the profiles it was given (catches it silently
+       falling back to defaults, as it did when profiles weren't flattened).
+    2. Slice metrics, written to metrics_dir/<model>.slice.json.
+    3. The model's slice expectations from pyproject.toml.
+    """
+    ok = True
+    try:
+        errors, warnings = verify_effective_settings(flat, effective_settings(threemf), local_keys)
+        metrics = threemf_metrics(threemf)
+    except (OSError, KeyError, ValueError, zipfile.BadZipFile) as e:
+        log.echo(f"  ✗ Can't read {threemf.name}: {e}", fg="red", err=True)
+        return False
+    for msg in errors:
+        log.echo(f"  ✗ Settings: {msg}", fg="red", err=True)
+    if errors:
+        ok = False
+    if warnings:
+        log.echo(f"  - {len(warnings)} upstream profile key(s) unknown to this slicer (see `scad-tools profiles lint`)")
+
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    (metrics_dir / f"{model_name}.slice.json").write_text(json.dumps(metrics, indent=2) + "\n")
+    time = format_duration(metrics["time_s"]) if metrics["time_s"] is not None else "?"
+    log.echo(
+        f"  · {time}, {metrics['filament_g']} g, {metrics['layers']} layers, "
+        f"supports {'yes' if metrics['supports'] else 'no'} ({metrics['support_pct']}%), "
+        f"longest bridge {metrics['max_bridge_mm']} mm"
+    )
+    for failure in evaluate("slice", metrics, expected):
+        log.echo(f"  ✗ Expectation {failure}", fg="red", err=True)
+        ok = False
+    return ok
+
 
 
 def slice_single_model(
     model_name: str,
     artifacts_dir: Path,
     orca_bin: str,
+    flat_profiles: dict[str, Path],
     cache_config: dict | None,
     log: TaskLog,
 ) -> bool:
@@ -1009,6 +1037,8 @@ def slice_single_model(
         artifacts_dir: Directory containing stl/ (and preview/ for the 3MF
             thumbnail), and for gcode/ output
         orca_bin: Path to OrcaSlicer binary
+        flat_profiles: Flattened machine/process/filament profiles (see
+            scripts/profiles.py: the CLI doesn't resolve `inherits` itself)
         cache_config: ORAS cache configuration or None
         log: Buffer for this model's output
 
@@ -1034,7 +1064,7 @@ def slice_single_model(
     # Check cache if enabled
     if cache_config:
         stl_hash = compute_file_hash(stl_file)
-        profiles_hash = compute_profiles_hash()[:8]
+        profiles_hash = compute_profiles_hash(flat_profiles)[:8]
         slicer_hash = compute_string_hash(get_orca_version(orca_bin))[:8]
         # The preview is embedded as the plate thumbnail, so it's part of the key.
         preview_hash = compute_file_hash(preview_file) if preview_file.exists() else "no-preview"
@@ -1065,8 +1095,10 @@ def slice_single_model(
 
         log.echo(f"  ✗ Cache miss, slicing...")
 
-    # Build settings argument: machine;process;filament
-    settings = ";".join(str(p.resolve()) for p in ORCA_PROFILES)
+    # Machine and process go in --load-settings; filaments have their own
+    # flag (a filament in --load-settings is silently ignored).
+    settings = ";".join(str(flat_profiles[k].resolve()) for k in ("machine", "process"))
+    filaments = str(flat_profiles["filament"].resolve())
 
     # Make paths absolute for OrcaSlicer
     abs_input = stl_file.resolve()
@@ -1077,6 +1109,7 @@ def slice_single_model(
         orca_bin,
         [
             "--load-settings", settings,
+            "--load-filaments", filaments,
             "--slice", "0",
             "--export-3mf", str(abs_output),
             str(abs_input),
@@ -1136,25 +1169,89 @@ def slice_single_model(
 @click.option("--output-dir", type=click.Path(path_type=Path), default=Path("artifacts"))
 @jobs_option
 @click.pass_context
+def mesh(ctx: click.Context, output_dir: Path, jobs: int) -> None:
+    """Check rendered STLs: watertight, part count, plate fit, walls, overhangs.
+
+    Runs on artifacts/stl/ from `scad-tools render`; no slicer needed. Each
+    model must meet its [tool.scad-tools.expect] mesh rules. Metrics go to
+    <output-dir>/metrics/<model>.mesh.json. The build volume comes from the
+    machine profile when the slicer profiles are fetched.
+    """
+    base_path = ctx.obj["base_path"]
+    defaults, model_expectations = load_expectations(base_path)
+    bed = None
+    if not missing_orca_profiles({"machine": ORCA_MACHINE_PROFILE}):
+        bed = bed_size(flatten_profile("machine", ORCA_MACHINE_PROFILE))
+    if bed is None:
+        click.secho("⚠ No machine profile (run `scad-tools profiles fetch`); skipping plate-fit checks", fg="yellow")
+
+    models = [get_output_name(f, base_path) for f in find_scad_files(base_path)]
+    if not models:
+        click.echo("No models found")
+        return
+    metrics_dir = output_dir / "metrics"
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+
+    def check_one(model_name: str) -> bool:
+        log = TaskLog()
+        stl = output_dir / "stl" / f"{model_name}.stl"
+        log.echo(f"Checking {model_name}...")
+        if not stl.exists():
+            log.echo(f"  ✗ STL not found: {stl} (run `scad-tools render` first)", fg="red", err=True)
+            flush_log(log)
+            return False
+        metrics = mesh_metrics(stl, bed)
+        (metrics_dir / f"{model_name}.mesh.json").write_text(json.dumps(metrics, indent=2) + "\n")
+        size = " × ".join(f"{v:g}" for v in metrics["size_mm"])
+        log.echo(
+            f"  · {size} mm, {metrics['bodies']} body(ies), thinnest wall {metrics['min_wall_mm']} mm, "
+            f"overhang {metrics['overhang_mm2']} mm²"
+        )
+        expected = expectations_for(model_rel_path(model_name), defaults, model_expectations)
+        failures = evaluate("mesh", metrics, expected)
+        for failure in failures:
+            log.echo(f"  ✗ Expectation {failure}", fg="red", err=True)
+        if not failures:
+            log.echo("  ✓ OK", fg="green")
+        flush_log(log)
+        return not failures
+
+    results = run_parallel(check_one, models, jobs)
+    failed = [m for m, ok in zip(models, results) if not ok]
+    click.echo()
+    if failed:
+        click.secho(f"✗ {len(failed)}/{len(models)} model(s) failed mesh checks", fg="red", err=True)
+        sys.exit(1)
+    click.echo(f"✓ All {len(models)} model(s) passed mesh checks")
+
+
+@cli.command()
+@click.option("--output-dir", type=click.Path(path_type=Path), default=Path("artifacts"))
+@jobs_option
+@click.pass_context
 def slice(ctx: click.Context, output_dir: Path, jobs: int) -> None:
     """Slice all rendered STL models to 3MF.
 
     Requires STL files to already be rendered in artifacts/stl/.
     Automatically uses GHCR caching when GITHUB_REPOSITORY is set.
     Models can be excluded in pyproject.toml [tool.scad-tools.slice.exclude].
+
+    Each 3MF is then checked: the slicer must have applied the profiles, and
+    the model must meet its [tool.scad-tools.expect] slice budgets. Metrics
+    go to <output-dir>/metrics/<model>.slice.json.
     """
     orca_bin = find_orca_slicer()
-    # Fail once up front rather than once per model with OrcaSlicer's log
-    missing = missing_orca_profiles()
-    if missing:
-        listing = "\n".join(f"  {p}" for p in missing)
-        raise click.ClickException(
-            f"Slicer profile(s) not found:\n{listing}\n"
-            "Fetch the pinned OrcaSlicer profiles with `uv run scad-tools profiles fetch` "
-            "(or `git submodule update --init --depth 1`)."
-        )
+    require_profiles()  # fail once up front rather than once per model
+    base_path = ctx.obj["base_path"]
+    defaults, model_expectations = load_expectations(base_path)
     cache_config = get_cache_config()
-    exclusions = get_slice_exclusions(ctx.obj["base_path"])
+    exclusions = get_slice_exclusions(base_path)
+
+    # The CLI can't resolve `inherits`, so hand it complete profiles. Kept in
+    # the artifacts so the exact slicer input is inspectable.
+    flat_profiles = write_flat_profiles(output_dir / "profiles")
+    flat = {kind: json.loads(path.read_text()) for kind, path in flat_profiles.items()}
+    local_keys = local_override_keys()
 
     if cache_config:
         click.echo(f"ORAS caching enabled: {cache_config['registry']}")
@@ -1185,7 +1282,13 @@ def slice(ctx: click.Context, output_dir: Path, jobs: int) -> None:
 
     def slice_one(model_name: str) -> bool:
         log = TaskLog()
-        ok = slice_single_model(model_name, output_dir, orca_bin, cache_config, log)
+        ok = slice_single_model(model_name, output_dir, orca_bin, flat_profiles, cache_config, log)
+        if ok:
+            expected = expectations_for(model_rel_path(model_name), defaults, model_expectations)
+            threemf = output_dir / "gcode" / f"{model_name}.3mf"
+            ok = check_sliced_model(
+                model_name, threemf, flat, local_keys, expected, output_dir / "metrics", log
+            )
         flush_log(log)
         return ok
 
@@ -1198,63 +1301,12 @@ def slice(ctx: click.Context, output_dir: Path, jobs: int) -> None:
     if skipped:
         click.echo(f"Skipped {len(skipped)} model(s) (excluded in config)")
     if failed:
-        click.secho(f"✗ {len(failed)} model(s) failed to slice", fg="red", err=True)
+        click.secho(f"✗ {len(failed)} model(s) failed to slice or failed checks", fg="red", err=True)
         for name in failed:
             click.echo(f"  - {name}")
         sys.exit(1)
 
     click.echo(f"✓ Sliced {sliced} model(s) to {output_dir / 'gcode'}")
-
-
-@cli.group()
-def profiles() -> None:
-    """Manage the upstream OrcaSlicer printer profiles."""
-
-
-def _git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
-
-
-@profiles.command()
-@click.option("--remote", default=ORCA_UPSTREAM_URL, show_default=True, help="Repository to fetch from")
-def fetch(remote: str) -> None:
-    """Fetch the pinned OrcaSlicer profiles into .orca-slicer.
-
-    Reads the commit from the .orca-slicer submodule gitlink and does a
-    blobless, depth-1, sparse fetch of only resources/profiles at that commit,
-    instead of cloning the whole OrcaSlicer source tree. Idempotent; an
-    existing submodule checkout is moved to the pinned commit but keeps its
-    own sparse-checkout settings.
-    """
-    sha = orca_profiles_commit()
-    if not sha:
-        raise click.ClickException(f"No {ORCA_SUBMODULE} submodule pinned at HEAD (not in the repo root?)")
-
-    dest = ORCA_SUBMODULE
-    dest.mkdir(exist_ok=True)
-    # An uninitialized submodule is an empty dir, where git commands resolve
-    # to the parent repo; only treat dest as a checkout if it is its own root.
-    toplevel = _git("rev-parse", "--show-toplevel", cwd=dest).stdout.strip()
-    is_checkout = bool(toplevel) and Path(toplevel).resolve() == dest.resolve()
-
-    if is_checkout and _git("rev-parse", "HEAD", cwd=dest).stdout.strip() == sha:
-        click.echo(f"✓ {dest} already at {sha[:12]}")
-        return
-    if not is_checkout:
-        for args in (("init", "-q"), ("sparse-checkout", "set", ORCA_PROFILES_SUBTREE)):
-            result = _git(*args, cwd=dest)
-            if result.returncode != 0:
-                raise click.ClickException(f"git {' '.join(args)} failed: {result.stderr.strip()}")
-
-    if _git("cat-file", "-e", f"{sha}^{{commit}}", cwd=dest).returncode != 0:
-        click.echo(f"Fetching {ORCA_PROFILES_SUBTREE} at {sha[:12]} from {remote}...")
-        result = _git("fetch", "-q", "--depth", "1", "--filter=blob:none", remote, sha, cwd=dest)
-        if result.returncode != 0:
-            raise click.ClickException(f"git fetch failed: {result.stderr.strip()}")
-    result = _git("checkout", "-q", sha, cwd=dest)
-    if result.returncode != 0:
-        raise click.ClickException(f"git checkout failed: {result.stderr.strip()}")
-    click.secho(f"✓ {dest} at {sha[:12]}", fg="green")
 
 
 # =============================================================================
@@ -1434,6 +1486,14 @@ cli.add_command(toolchain)
 from scripts.cache import cache  # noqa: E402
 
 cli.add_command(cache)
+
+from scripts.profiles import profiles  # noqa: E402
+
+cli.add_command(profiles)
+
+from scripts.snapshot import metrics  # noqa: E402
+
+cli.add_command(metrics)
 
 
 if __name__ == "__main__":

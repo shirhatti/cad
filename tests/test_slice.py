@@ -1,28 +1,20 @@
-"""`scad-tools slice` preflight, OrcaSlicer version detection, and `profiles fetch`."""
+"""`scad-tools slice`: preflight, OrcaSlicer version detection, exclusions, post-slice checks."""
 
-import subprocess
+import json
 from pathlib import Path
 
 import pytest
+from test_slice_metrics import make_3mf
 
-from scripts import scad_tools
-from scripts.scad_tools import cli, compute_profiles_hash, get_orca_version
+from scripts import profiles, scad_tools
+from scripts.scad_tools import cli, get_orca_version
 
 
 @pytest.fixture(autouse=True)
 def fresh_caches():
     get_orca_version.cache_clear()
-    scad_tools.orca_profiles_commit.cache_clear()
     yield
     get_orca_version.cache_clear()
-    scad_tools.orca_profiles_commit.cache_clear()
-
-
-def git(*args, cwd):
-    subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
-        cwd=cwd, check=True, capture_output=True,
-    )
 
 
 def fake_bin(tmp_path: Path, name: str, body: str) -> str:
@@ -46,57 +38,6 @@ def fake_bin(tmp_path: Path, name: str, body: str) -> str:
 )
 def test_orca_version_parses_banner(tmp_path, banner, version):
     assert get_orca_version(fake_bin(tmp_path, "orca", banner)) == version
-
-
-def make_repo_with_pin(tmp_path: Path) -> tuple[Path, Path, str]:
-    """An upstream repo with profiles + other files, and a parent pinning it."""
-    upstream = tmp_path / "upstream"
-    (upstream / "resources/profiles/BBL").mkdir(parents=True)
-    (upstream / "resources/profiles/BBL/x.json").write_text("{}")
-    (upstream / "src").mkdir()
-    (upstream / "src/big.cpp").write_text("int main;")
-    git("init", "-q", cwd=upstream)
-    git("add", ".", cwd=upstream)
-    git("commit", "-qm", "upstream", cwd=upstream)
-    # Let a file:// fetch ask for a bare sha with a filter, as GitHub allows
-    git("config", "uploadpack.allowFilter", "true", cwd=upstream)
-    git("config", "uploadpack.allowAnySHA1InWant", "true", cwd=upstream)
-    sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=upstream, capture_output=True, text=True, check=True
-    ).stdout.strip()
-
-    parent = tmp_path / "parent"
-    (parent / "projects").mkdir(parents=True)  # the CLI's default --base-path
-    git("init", "-q", cwd=parent)
-    git("update-index", "--add", "--cacheinfo", f"160000,{sha},.orca-slicer", cwd=parent)
-    git("commit", "-qm", "pin", cwd=parent)
-    return upstream, parent, sha
-
-
-def test_profiles_fetch_is_sparse_and_idempotent(runner, tmp_path, monkeypatch):
-    upstream, parent, sha = make_repo_with_pin(tmp_path)
-    monkeypatch.chdir(parent)
-    remote = f"file://{upstream}"
-
-    result = runner.invoke(cli, ["profiles", "fetch", "--remote", remote])
-    assert result.exit_code == 0, result.output
-    assert (parent / ".orca-slicer/resources/profiles/BBL/x.json").is_file()
-    assert not (parent / ".orca-slicer/src").exists()
-
-    result = runner.invoke(cli, ["profiles", "fetch", "--remote", remote])
-    assert result.exit_code == 0, result.output
-    assert "already at" in result.output
-
-
-def test_profiles_hash_tracks_upstream_pin(tmp_path, monkeypatch):
-    _, parent, _ = make_repo_with_pin(tmp_path)
-    monkeypatch.chdir(parent)
-    pinned = compute_profiles_hash()
-
-    git("update-index", "--cacheinfo", f"160000,{'1' * 40},.orca-slicer", cwd=parent)
-    git("commit", "-qm", "bump", cwd=parent)
-    scad_tools.orca_profiles_commit.cache_clear()
-    assert compute_profiles_hash() != pinned
 
 
 def test_slice_fails_fast_without_profiles(runner, tmp_path, monkeypatch, write):
@@ -127,3 +68,82 @@ def test_slice_exclusions(tmp_path, monkeypatch, write, capsys):
     write("pyproject.toml", "[tool.scad-tools.slice.exclude\n")
     with pytest.raises(scad_tools.click.ClickException, match="Can't read slice exclusions"):
         scad_tools.get_slice_exclusions(Path("projects"))
+
+
+def setup_slice_project(tmp_path, monkeypatch, effective_overrides=None, expect=""):
+    """
+    A project with one rendered model, minimal profiles, and a fake OrcaSlicer
+    that records its arguments and "exports" a 3MF whose project settings are
+    the flattened profiles (plus effective_overrides, to simulate the slicer
+    ignoring something).
+    """
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    up = Path(".orca-slicer/resources/profiles/BBL")
+    local = Path(".orca-profiles-local/BBL")
+    files = {
+        local / "machine/Bambu Lab A1 0.4 nozzle.json": {"type": "machine", "name": "Bambu Lab A1 0.4 nozzle",
+                                                         "printable_area": ["0x0", "256x0", "256x256", "0x256"],
+                                                         "printable_height": "256"},
+        local / "process/0.20mm Standard @BBL A1.json": {"type": "process", "name": "0.20mm Standard @BBL A1",
+                                                         "layer_height": "0.2"},
+        up / "filament/fdm_filament_pla.json": {"type": "filament", "name": "fdm_filament_pla",
+                                                "filament_density": ["1.24"]},
+        up / "filament/Generic PLA @BBL A1.json": {"type": "filament", "name": "Generic PLA @BBL A1",
+                                                   "inherits": "fdm_filament_pla"},
+    }
+    for path, data in files.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data))
+    profiles.upstream_index.cache_clear()
+
+    effective = {"printable_area": ["0x0", "256x0", "256x256", "0x256"], "printable_height": "256",
+                 "layer_height": "0.2", "filament_density": ["1.24"], **(effective_overrides or {})}
+    gcode = "M83\n; CHANGE_LAYER\n; Z_HEIGHT: 0.2\n; FEATURE: Outer wall\nG1 X1 E1\n"
+    canned = make_3mf(tmp_path / "canned.3mf", gcode, effective, time=3600, weight="10")
+
+    write_model = tmp_path / "projects/proj/model.scad"
+    write_model.parent.mkdir(parents=True)
+    write_model.write_text("cube(1);\n")
+    (tmp_path / "artifacts/stl").mkdir(parents=True)
+    (tmp_path / "artifacts/stl/proj__model.stl").write_text("solid x\n")
+    (tmp_path / "pyproject.toml").write_text(expect)
+
+    args_log = tmp_path / "orca-args"
+    orca = fake_bin(tmp_path, "orca-slicer", f"""
+case "$1" in --help) echo 'OrcaSlicer-2.3.1:'; exit 0 ;; esac
+printf '%s\\n' "$@" > {args_log}
+while [ $# -gt 0 ]; do [ "$1" = --export-3mf ] && cp {canned} "$2"; shift; done
+""")
+    monkeypatch.setenv("PATH", f"{Path(orca).parent}:/usr/bin:/bin")
+    return args_log
+
+
+def test_slice_passes_flattened_profiles_and_writes_metrics(runner, tmp_path, monkeypatch):
+    args_log = setup_slice_project(tmp_path, monkeypatch)
+    result = runner.invoke(cli, ["slice", "-j", "1"])
+    assert result.exit_code == 0, result.output
+
+    args = args_log.read_text().splitlines()
+    flat = tmp_path / "artifacts/profiles"
+    # Filament goes through its own flag, as a flattened (inherits-free) file
+    assert args[args.index("--load-settings") + 1] == f"{flat / 'machine.json'};{flat / 'process.json'}"
+    assert args[args.index("--load-filaments") + 1] == str(flat / "filament.json")
+    assert json.loads((flat / "filament.json").read_text())["filament_density"] == ["1.24"]
+
+    metrics = json.loads((tmp_path / "artifacts/metrics/proj__model.slice.json").read_text())
+    assert (metrics["time_s"], metrics["filament_g"]) == (3600, 10.0)
+
+
+def test_slice_fails_when_slicer_ignores_a_setting(runner, tmp_path, monkeypatch):
+    setup_slice_project(tmp_path, monkeypatch, {"filament_density": ["0"]})
+    result = runner.invoke(cli, ["slice", "-j", "1"])
+    assert result.exit_code == 1, result.output
+    assert "filament.filament_density: profile has ['1.24'], slicer used ['0']" in result.output
+
+
+def test_slice_fails_over_budget(runner, tmp_path, monkeypatch):
+    setup_slice_project(tmp_path, monkeypatch, expect='[tool.scad-tools.expect.models."proj/model.scad"]\nmax_time = "45m"\n')
+    result = runner.invoke(cli, ["slice", "-j", "1"])
+    assert result.exit_code == 1, result.output
+    assert "max_time: 1h00m is over the budget of 45m00s" in result.output

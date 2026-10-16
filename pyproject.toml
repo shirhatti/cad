@@ -5,9 +5,13 @@ description = "OpenSCAD CAD project tools including MakerBot Customizer linting"
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.3.1",
+    "numpy>=2.4.6",
     "oras>=0.2.38",
+    "rtree>=1.4.1",
+    "scipy>=1.17.1",
     "tree-sitter>=0.25.2",
     "tree-sitter-openscad",
+    "trimesh>=5.1.1",
 ]
 
 [project.scripts]
@@ -23,6 +27,7 @@ packages = ["scripts"]
 
 [dependency-groups]
 dev = [
+    "manifold3d>=3.5.4",
     "pre-commit>=4.0.0",
     "pytest>=9.1.1",
 ]
@@ -37,4 +42,48 @@ tree-sitter-openscad = { git = "https://github.com/openscad/tree-sitter-openscad
 # Models excluded from slicing with reasons
 # Format: "path/to/model.scad" = "reason"
 [tool.scad-tools.slice.exclude]
-"rack/wiim_amp_retention_bracket.scad" = "Too large for Bambu A1 build plate (256x256mm)"
+
+# Print expectations: checked by `scad-tools mesh` (STL) and `scad-tools slice`
+# (3MF). Defaults apply to every model; per-model tables override them. Keys:
+#   mesh:  watertight, bodies, fits_plate, min_wall_mm, max_overhang_mm2,
+#          min_bed_contact_mm2
+#   slice: max_time ("1h30m"), max_filament_g, supports, max_support_pct,
+#          max_bridge_mm (longest span over air), max_overhang_wall_pct
+# Budgets sit ~15% above the current numbers, so a regression fails CI while
+# print-metrics.json records the exact values.
+[tool.scad-tools.expect.defaults]
+watertight = true
+bodies = 1
+fits_plate = true
+min_wall_mm = 0.8      # two 0.4 mm perimeters
+max_bridge_mm = 25     # PLA bridges reliably up to ~25 mm
+
+[tool.scad-tools.expect.models."test/test_cube.scad"]
+max_time = "15m"
+max_filament_g = 1
+supports = false
+
+[tool.scad-tools.expect.models."desk/lenovo_135w_adapter_clamp.scad"]
+bodies = 2             # a set of clamps on one plate
+max_time = "55m"
+max_filament_g = 20
+
+[tool.scad-tools.expect.models."rack/apple_tv_retention_bracket.scad"]
+max_time = "2h20m"
+max_filament_g = 62
+
+[tool.scad-tools.expect.models."rack/wiim_amp_retention_bracket.scad"]
+max_time = "5h25m"
+max_filament_g = 160
+
+[tool.scad-tools.expect.models."binder/dual_phone_case.scad"]
+bodies = 2             # two trays joined by a print-in-place hinge
+max_time = "3h25m"
+max_filament_g = 110
+# The design intends no supports, but the global auto-support adds them along
+# the hinge spine (see print-metrics.json). Enable once that's resolved:
+# supports = false
+
+[tool.scad-tools.expect.models."wall/elitemini_800_g9_wall_mount.scad"]
+max_time = "4h40m"
+max_filament_g = 140

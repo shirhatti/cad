@@ -39,8 +39,12 @@ just check
 # Render all models to STL + PNG previews
 just build
 
-# Slice all rendered STL files to 3MF
+# Mesh checks, then slice to 3MF (verifies slicer settings and print budgets)
+just mesh
 just slice
+
+# Or all of it, updating print-metrics.json
+just snapshot
 
 # Render a single file (pass a path)
 just render projects/rack/apple_tv_retention_bracket.scad
@@ -64,8 +68,13 @@ All commands are thin wrappers around the unified `scad-tools` CLI
 - `just gui <file>` - Open a file in the OpenSCAD GUI
 - `just clean` - Remove build artifacts (`artifacts/`)
 
-### Orca Slicer (3MF/G-code generation)
-- `just slice` - Slice all rendered STL files to 3MF with embedded G-code
+### Print checks
+- `just mesh` - Mesh checks on rendered STLs (watertight, part count, plate fit, walls, overhangs)
+- `just slice` - Slice all rendered STL files to 3MF, verifying slicer settings and print budgets
+- `just snapshot` - Render, check, and slice everything, then update `print-metrics.json`
+- `just metrics-diff` - Show print-metric changes against the committed snapshot
+- `just profiles` - Fetch the pinned OrcaSlicer profiles
+- `just profiles-lint` - Lint the slicer profiles and local overrides
 
 ### Watching for changes
 - `just watch` - Auto-rebuild all files on changes
@@ -75,8 +84,49 @@ All commands are thin wrappers around the unified `scad-tools` CLI
 
 1. Create a project directory in `projects/<project-name>/`
 2. Add `.scad` files and a project README
-3. Run `just build` to render STL files
-4. Run `just slice` to generate 3MF/G-code for all rendered models
+3. Declare what you expect of the print in `pyproject.toml` (see below)
+4. Run `just snapshot` to render, check, and slice, then commit the updated
+   `print-metrics.json` with your change
+
+## Print checks
+
+Think of the pipeline as a compiler, with a check at each stage:
+
+| Stage | Command | Checks |
+|---|---|---|
+| `.scad` source | `just lint`, `just test` | Customizer compliance; `assert()`-based unit tests |
+| STL mesh | `just mesh` | Watertight, part count, fits the build volume, thinnest wall, overhang area, bed contact |
+| Slicer profiles | `just profiles-lint` | Inheritance resolves; no typo'd or no-op overrides |
+| Sliced 3MF | `just slice` | The slicer applied every profile setting; print time, filament, supports, unsupported bridge spans |
+
+**Expectations** are per-model rules in `pyproject.toml`, like type
+annotations for a print. Defaults apply to every model:
+
+```toml
+[tool.scad-tools.expect.defaults]
+watertight = true
+bodies = 1
+min_wall_mm = 0.8      # two 0.4 mm perimeters
+max_bridge_mm = 25     # longest span over air
+
+[tool.scad-tools.expect.models."rack/apple_tv_retention_bracket.scad"]
+max_time = "2h20m"
+max_filament_g = 62
+```
+
+Mesh rules: `watertight`, `bodies`, `fits_plate`, `min_wall_mm`,
+`max_overhang_mm2`, `min_bed_contact_mm2`. Slice rules: `max_time`,
+`max_filament_g`, `supports`, `max_support_pct`, `max_bridge_mm`,
+`max_overhang_wall_pct`. Unknown keys are errors, so a typo can't silently
+switch a check off.
+
+**`print-metrics.json`** is a committed snapshot of every model's metrics: print
+time, filament, layers, support share, size, thinnest wall, and so on. A PR
+that changes a model shows the effect in its diff, and CI comments a table of
+changes against the base branch. CI fails if the snapshot is stale, the same
+way it would for an out-of-date lockfile. Slicer estimates jitter slightly
+between identical runs, so time, filament and support share compare within
+about 2%.
 
 ## Orca Slicer Configuration
 
@@ -87,16 +137,20 @@ with local overrides in `.orca-profiles-local/`. Default settings:
 - **Process**: 0.20mm Standard layer height
 - **Filament**: Generic PLA
 
-To change settings, edit the profile path constants near the top of the
-OrcaSlicer section in `scripts/scad_tools.py`:
+To change settings, edit the profile path constants in `scripts/profiles.py`:
 ```python
 ORCA_MACHINE_PROFILE = ORCA_PROFILES_LOCAL / "machine/Bambu Lab A1 0.4 nozzle.json"
 ORCA_PROCESS_PROFILE = ORCA_PROFILES_LOCAL / "process/0.20mm Standard @BBL A1.json"
 ORCA_FILAMENT_PROFILE = ORCA_PROFILES_UPSTREAM / "filament/Generic PLA @BBL A1.json"
 ```
 
-Models that can't be sliced (e.g. too large for the build plate) are excluded
-in `pyproject.toml` under `[tool.scad-tools.slice.exclude]`.
+The OrcaSlicer CLI doesn't resolve profile inheritance, so `scad-tools slice`
+flattens each profile into a complete config (kept in `artifacts/profiles/`;
+`uv run scad-tools profiles show <machine|process|filament>` prints one). It
+then checks that the 3MF records exactly those settings.
+
+Models that can't be sliced are excluded in `pyproject.toml` under
+`[tool.scad-tools.slice.exclude]`.
 
 See `.orca-profiles-local/README.md` for details on profile overrides.
 
@@ -105,11 +159,13 @@ See `.orca-profiles-local/README.md` for details on profile overrides.
 GitHub Actions runs on every branch push and pull request (superseded runs are
 cancelled), in this order:
 
-1. **Lint** - MakerBot Customizer compliance (`scad-tools lint`)
+1. **Lint** - MakerBot Customizer compliance (`scad-tools lint`) and slicer profiles (`scad-tools profiles lint`)
 2. **Test** - OpenSCAD unit tests (`*_test.scad`)
 3. **Check** - Validates all models render without errors
 4. **Render** - Generates STL + PNG from all `.scad` models
-5. **Slice** - Generates 3MF files with embedded G-code
+5. **Mesh** - Mesh checks and expectations on the STLs
+6. **Slice** - Generates 3MF files with embedded G-code, verifies settings and expectations
+7. **Print metrics** - Posts a table of metric changes to the job summary (and as a PR comment), then fails if `print-metrics.json` is stale
 
 Renders and slices are cached in GHCR, keyed by a content hash of each model
 and its dependencies.
