@@ -29,20 +29,21 @@
         "Outer wall",
         "Overhang wall",
         "Sparse infill",
-        "Support",
-        "Support interface",
         "Top surface"
       ],
-      "filament_g": 95.5,
-      "filament_m": 32.03,
+      "filament_g": 89.6,
+      "filament_m": 30.03,
       "fits_plate": true,
       "height_mm": 18.0,
       "layers": 90,
       "max_bridge_mm": 0.0,
       "overhang_wall_pct": 0.1,
-      "support_pct": 8.1,
-      "supports": true,
-      "time_s": 10821
+      "settings": {
+        "enable_support": "0"
+      },
+      "support_pct": 0.0,
+      "supports": false,
+      "time_s": 9840
     }
   },
   "desk/lenovo_135w_adapter_clamp.scad": {

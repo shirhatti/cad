@@ -51,10 +51,20 @@ def test_absolute_extrusion_mode():
     assert m["support_pct"] == 50.0  # 5 of 10 mm of filament
 
 
-def test_bridge_over_air_counts_full_span():
+def test_bridge_over_air_counts_the_span():
+    # Anchored only at x=0..1 below; the rest of the 30 mm line is over air,
+    # less the 1-2 mm anchoring tolerance
     m = gcode_metrics("\n".join(["M83", layer(0.2, "; FEATURE: Outer wall", "G1 X1 E1"), layer(0.4, *BRIDGE)]))
-    assert m["max_bridge_mm"] == 30.0
+    assert 27 <= m["max_bridge_mm"] <= 29
     assert m["supports"] is False
+
+
+def test_bridge_along_a_narrow_channel_is_not_a_span():
+    # The roof of a 2 mm channel: walls 2 mm apart below, a bridge line running
+    # lengthwise between them. Long line, trivial span.
+    walls = ["; FEATURE: Inner wall", "G1 X0 Y-1", "G1 X30 Y-1 E1", "G1 X30 Y1", "G1 X0 Y1 E1"]
+    m = gcode_metrics("\n".join(["M83", layer(0.2, *walls), layer(0.4, *BRIDGE)]))
+    assert m["max_bridge_mm"] == 0.0
 
 
 def test_bridge_over_support_is_not_a_span():

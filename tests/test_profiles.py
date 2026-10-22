@@ -151,3 +151,41 @@ def test_profiles_fetch_is_sparse_and_idempotent(runner, tmp_path, monkeypatch):
     result = runner.invoke(cli, ["profiles", "fetch", "--remote", remote])
     assert result.exit_code == 0, result.output
     assert "already at" in result.output
+
+
+FLAT = {
+    "machine": {"printable_height": "256", "nozzle_diameter": ["0.4"]},
+    "process": {"enable_support": "1", "wall_loops": "2", "brim_width": "5"},
+    "filament": {"nozzle_temperature": ["220"]},
+}
+
+
+def test_model_settings_route_and_convert(tmp_path, write, capsys):
+    write("projects/p/a.scad", "")
+    pyproject = write("pyproject.toml", """
+[tool.scad-tools.slice.settings."p/a.scad"]
+enable_support = false
+wall_loops = 3
+nozzle_temperature = 230   # per-filament list: scalar applies to each
+brim_width = "5"           # same as the profile: warns
+""")
+    settings = P.load_model_settings(tmp_path / "projects", FLAT, pyproject)
+    assert settings == {"p/a.scad": {
+        "process": {"enable_support": "0", "wall_loops": "3", "brim_width": "5"},
+        "filament": {"nozzle_temperature": ["230"]},
+    }}
+    assert "brim_width = '5' is already the profile's value" in capsys.readouterr().err
+    merged = P.apply_model_settings(FLAT, settings["p/a.scad"])
+    assert merged["process"]["enable_support"] == "0" and FLAT["process"]["enable_support"] == "1"
+
+
+@pytest.mark.parametrize("body, match", [
+    ("enable_suport = false", "'enable_suport' is not a setting"),
+    ("name = 'x'", "'name' is not a setting"),
+    ("printable_height = [1, 2]", "is a single value in the profile, not a list"),
+    ("wall_loops = {a = 1}", "expected a string, number, boolean, or list"),
+])
+def test_model_settings_errors(tmp_path, write, body, match):
+    pyproject = write("pyproject.toml", f'[tool.scad-tools.slice.settings."p/a.scad"]\n{body}\n')
+    with pytest.raises(click.ClickException, match=match):
+        P.load_model_settings(tmp_path, FLAT, pyproject)

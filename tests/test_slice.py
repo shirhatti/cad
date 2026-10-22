@@ -86,7 +86,7 @@ def setup_slice_project(tmp_path, monkeypatch, effective_overrides=None, expect=
                                                          "printable_area": ["0x0", "256x0", "256x256", "0x256"],
                                                          "printable_height": "256"},
         local / "process/0.20mm Standard @BBL A1.json": {"type": "process", "name": "0.20mm Standard @BBL A1",
-                                                         "layer_height": "0.2"},
+                                                         "layer_height": "0.2", "enable_support": "1"},
         up / "filament/fdm_filament_pla.json": {"type": "filament", "name": "fdm_filament_pla",
                                                 "filament_density": ["1.24"]},
         up / "filament/Generic PLA @BBL A1.json": {"type": "filament", "name": "Generic PLA @BBL A1",
@@ -98,7 +98,8 @@ def setup_slice_project(tmp_path, monkeypatch, effective_overrides=None, expect=
     profiles.upstream_index.cache_clear()
 
     effective = {"printable_area": ["0x0", "256x0", "256x256", "0x256"], "printable_height": "256",
-                 "layer_height": "0.2", "filament_density": ["1.24"], **(effective_overrides or {})}
+                 "layer_height": "0.2", "enable_support": "1", "filament_density": ["1.24"],
+                 **(effective_overrides or {})}
     gcode = "M83\n; CHANGE_LAYER\n; Z_HEIGHT: 0.2\n; FEATURE: Outer wall\nG1 X1 E1\n"
     canned = make_3mf(tmp_path / "canned.3mf", gcode, effective, time=3600, weight="10")
 
@@ -147,3 +148,29 @@ def test_slice_fails_over_budget(runner, tmp_path, monkeypatch):
     result = runner.invoke(cli, ["slice", "-j", "1"])
     assert result.exit_code == 1, result.output
     assert "max_time: 1h00m is over the budget of 45m00s" in result.output
+
+
+SETTINGS = '[tool.scad-tools.slice.settings."proj/model.scad"]\nenable_support = false\n'
+
+
+def test_slice_applies_per_model_settings(runner, tmp_path, monkeypatch):
+    args_log = setup_slice_project(tmp_path, monkeypatch, {"enable_support": "0"}, expect=SETTINGS)
+    result = runner.invoke(cli, ["slice", "-j", "1"])
+    assert result.exit_code == 0, result.output
+    assert "overrides: enable_support=0" in result.output
+
+    # The model gets its own profile set with the override applied
+    own = tmp_path / "artifacts/profiles/proj__model"
+    args = args_log.read_text().splitlines()
+    assert args[args.index("--load-settings") + 1] == f"{own / 'machine.json'};{own / 'process.json'}"
+    assert json.loads((own / "process.json").read_text())["enable_support"] == "0"
+    assert json.loads((tmp_path / "artifacts/profiles/process.json").read_text())["enable_support"] == "1"
+    metrics = json.loads((tmp_path / "artifacts/metrics/proj__model.slice.json").read_text())
+    assert metrics["settings"] == {"enable_support": "0"}
+
+
+def test_slice_fails_when_slicer_ignores_a_model_setting(runner, tmp_path, monkeypatch):
+    setup_slice_project(tmp_path, monkeypatch, expect=SETTINGS)  # 3MF still says enable_support=1
+    result = runner.invoke(cli, ["slice", "-j", "1"])
+    assert result.exit_code == 1, result.output
+    assert "process.enable_support: profile has '0', slicer used '1'" in result.output

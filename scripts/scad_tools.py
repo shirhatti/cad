@@ -57,12 +57,15 @@ from scripts.expect import evaluate, expectations_for, format_duration, load_exp
 from scripts.mesh import bed_size, mesh_metrics
 from scripts.profiles import (
     ORCA_MACHINE_PROFILE,
+    apply_model_settings,
     flatten_profile,
+    load_model_settings,
     local_override_keys,
     missing_orca_profiles,
     require_profiles,
     verify_effective_settings,
     write_flat_profiles,
+    write_profile_set,
 )
 from scripts.slice_metrics import effective_settings, threemf_metrics
 from scripts.snapshot import model_rel_path
@@ -983,13 +986,16 @@ def check_sliced_model(
     expected: dict,
     metrics_dir: Path,
     log: TaskLog,
+    overrides: dict[str, dict] | None = None,
 ) -> bool:
     """
     Post-slice checks on one 3MF (fresh or from the cache):
 
     1. The slicer applied the profiles it was given (catches it silently
-       falling back to defaults, as it did when profiles weren't flattened).
-    2. Slice metrics, written to metrics_dir/<model>.slice.json.
+       falling back to defaults, as it did when profiles weren't flattened),
+       including this model's own overrides.
+    2. Slice metrics, written to metrics_dir/<model>.slice.json, recording
+       the overrides so the snapshot shows them.
     3. The model's slice expectations from pyproject.toml.
     """
     ok = True
@@ -1006,6 +1012,10 @@ def check_sliced_model(
     if warnings:
         log.echo(f"  - {len(warnings)} upstream profile key(s) unknown to this slicer (see `scad-tools profiles lint`)")
 
+    settings = {k: v for kind in sorted(overrides or {}) for k, v in overrides[kind].items()}
+    if settings:
+        metrics["settings"] = settings
+        log.echo("  · overrides: " + ", ".join(f"{k}={v}" for k, v in sorted(settings.items())))
     metrics_dir.mkdir(parents=True, exist_ok=True)
     (metrics_dir / f"{model_name}.slice.json").write_text(json.dumps(metrics, indent=2) + "\n")
     time = format_duration(metrics["time_s"]) if metrics["time_s"] is not None else "?"
@@ -1234,7 +1244,8 @@ def slice(ctx: click.Context, output_dir: Path, jobs: int) -> None:
 
     Requires STL files to already be rendered in artifacts/stl/.
     Automatically uses GHCR caching when GITHUB_REPOSITORY is set.
-    Models can be excluded in pyproject.toml [tool.scad-tools.slice.exclude].
+    Models can be excluded in pyproject.toml [tool.scad-tools.slice.exclude],
+    and given their own slicer settings in [tool.scad-tools.slice.settings].
 
     Each 3MF is then checked: the slicer must have applied the profiles, and
     the model must meet its [tool.scad-tools.expect] slice budgets. Metrics
@@ -1252,6 +1263,7 @@ def slice(ctx: click.Context, output_dir: Path, jobs: int) -> None:
     flat_profiles = write_flat_profiles(output_dir / "profiles")
     flat = {kind: json.loads(path.read_text()) for kind, path in flat_profiles.items()}
     local_keys = local_override_keys()
+    model_settings = load_model_settings(base_path, flat)
 
     if cache_config:
         click.echo(f"ORAS caching enabled: {cache_config['registry']}")
@@ -1282,12 +1294,21 @@ def slice(ctx: click.Context, output_dir: Path, jobs: int) -> None:
 
     def slice_one(model_name: str) -> bool:
         log = TaskLog()
-        ok = slice_single_model(model_name, output_dir, orca_bin, flat_profiles, cache_config, log)
+        rel_path = model_rel_path(model_name)
+        overrides = model_settings.get(rel_path, {})
+        model_flat, model_profiles, model_keys = flat, flat_profiles, local_keys
+        if overrides:
+            # Its own profile set, so its cache key and verification include them
+            model_flat = apply_model_settings(flat, overrides)
+            model_profiles = write_profile_set(output_dir / "profiles" / model_name, model_flat)
+            model_keys = {k: local_keys.get(k, set()) | set(overrides.get(k, {})) for k in flat}
+        ok = slice_single_model(model_name, output_dir, orca_bin, model_profiles, cache_config, log)
         if ok:
-            expected = expectations_for(model_rel_path(model_name), defaults, model_expectations)
+            expected = expectations_for(rel_path, defaults, model_expectations)
             threemf = output_dir / "gcode" / f"{model_name}.3mf"
             ok = check_sliced_model(
-                model_name, threemf, flat, local_keys, expected, output_dir / "metrics", log
+                model_name, threemf, model_flat, model_keys, expected, output_dir / "metrics", log,
+                overrides,
             )
         flush_log(log)
         return ok

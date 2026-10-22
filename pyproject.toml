@@ -43,6 +43,12 @@ tree-sitter-openscad = { git = "https://github.com/openscad/tree-sitter-openscad
 # Format: "path/to/model.scad" = "reason"
 [tool.scad-tools.slice.exclude]
 
+# Per-model slicer settings, layered on the flattened machine/process/filament
+# profiles (`scad-tools profiles show <kind>` lists every setting). Values are
+# TOML (true/false, numbers, strings); unknown settings are errors.
+[tool.scad-tools.slice.settings."binder/dual_phone_case.scad"]
+enable_support = false  # print-in-place hinge: support in the knuckles would fuse it
+
 # Print expectations: checked by `scad-tools mesh` (STL) and `scad-tools slice`
 # (3MF). Defaults apply to every model; per-model tables override them. Keys:
 #   mesh:  watertight, bodies, fits_plate, min_wall_mm, max_overhang_mm2,
@@ -78,11 +84,9 @@ max_filament_g = 160
 
 [tool.scad-tools.expect.models."binder/dual_phone_case.scad"]
 bodies = 2             # two trays joined by a print-in-place hinge
-max_time = "3h25m"
-max_filament_g = 110
-# The design intends no supports, but the global auto-support adds them along
-# the hinge spine (see print-metrics.json). Enable once that's resolved:
-# supports = false
+max_time = "3h10m"
+max_filament_g = 103
+supports = false       # designed support-free (gussets + 45° chamfers)
 
 [tool.scad-tools.expect.models."wall/elitemini_800_g9_wall_mount.scad"]
 max_time = "4h40m"

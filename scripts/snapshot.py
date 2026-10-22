@@ -33,6 +33,7 @@ DISPLAY = {
     "layers": ("layers", str),
     "height_mm": ("height", lambda v: f"{v:g} mm"),
     "features": ("features", lambda v: ", ".join(v)),
+    "settings": ("slicer overrides", lambda v: ", ".join(f"{k}={x}" for k, x in sorted(v.items()))),
     "fits_plate": ("fits plate", lambda v: "yes" if v else "no"),
     "volume_cm3": ("volume", lambda v: f"{v:g} cm³"),
     "size_mm": ("size", lambda v: " × ".join(f"{x:g}" for x in v) + " mm"),

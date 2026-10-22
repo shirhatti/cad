@@ -75,6 +75,10 @@ Artifact output names are `<project>__<model>` (e.g.
   Run `just lint` to verify.
 - Models too large for the build plate (or otherwise unsliceable) are excluded
   in `pyproject.toml` under `[tool.scad-tools.slice.exclude]` with a reason.
+- A model that needs its own slicer settings (e.g. supports off for a
+  print-in-place hinge) gets them under
+  `[tool.scad-tools.slice.settings."<project>/<model>.scad"]`, with a comment
+  saying why. Don't change the shared profiles for one model.
 - Every printable model gets expectations in `pyproject.toml` under
   `[tool.scad-tools.expect.models."<project>/<model>.scad"]`: at least
   `max_time` and `max_filament_g` (about 15% above the sliced values), plus

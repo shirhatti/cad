@@ -116,8 +116,9 @@ max_filament_g = 62
 
 Mesh rules: `watertight`, `bodies`, `fits_plate`, `min_wall_mm`,
 `max_overhang_mm2`, `min_bed_contact_mm2`. Slice rules: `max_time`,
-`max_filament_g`, `supports`, `max_support_pct`, `max_bridge_mm`,
-`max_overhang_wall_pct`. Unknown keys are errors, so a typo can't silently
+`max_filament_g`, `supports`, `max_support_pct`, `max_bridge_mm` (the longest
+stretch of bridge line with nothing printed beneath it, so a bridge over support
+or along a narrow channel doesn't count), `max_overhang_wall_pct`. Unknown keys are errors, so a typo can't silently
 switch a check off.
 
 **`print-metrics.json`** is a committed snapshot of every model's metrics: print
@@ -148,6 +149,20 @@ The OrcaSlicer CLI doesn't resolve profile inheritance, so `scad-tools slice`
 flattens each profile into a complete config (kept in `artifacts/profiles/`;
 `uv run scad-tools profiles show <machine|process|filament>` prints one). It
 then checks that the 3MF records exactly those settings.
+
+A model that needs different slicer settings gets them in `pyproject.toml`,
+layered on top of the shared profiles:
+
+```toml
+[tool.scad-tools.slice.settings."binder/dual_phone_case.scad"]
+enable_support = false  # print-in-place hinge: support in the knuckles would fuse it
+```
+
+Any machine, process, or filament setting works (`uv run scad-tools profiles
+show process` lists them). A setting no profile defines is an error, so a typo
+can't slice with the setting silently unchanged. The model gets its own
+flattened profile set in `artifacts/profiles/<model>/`, the post-slice check
+confirms the slicer applied the override, and `print-metrics.json` records it.
 
 Models that can't be sliced are excluded in `pyproject.toml` under
 `[tool.scad-tools.slice.exclude]`.

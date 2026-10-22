@@ -18,6 +18,7 @@ import functools
 import json
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 
 import click
@@ -137,14 +138,93 @@ def flatten_profile(kind: str, path: Path, vendor_dir: Path = ORCA_PROFILES_UPST
     return flat
 
 
-def write_flat_profiles(dest: Path, profiles: dict[str, Path] = ORCA_PROFILES) -> dict[str, Path]:
-    """Flatten each profile into dest/<kind>.json; returns kind -> path."""
+def write_profile_set(dest: Path, flat: dict[str, dict]) -> dict[str, Path]:
+    """Write complete profiles to dest/<kind>.json; returns kind -> path."""
     dest.mkdir(parents=True, exist_ok=True)
     out = {}
-    for kind, path in profiles.items():
+    for kind, profile in flat.items():
         out[kind] = dest / f"{kind}.json"
-        out[kind].write_text(json.dumps(flatten_profile(kind, path), indent=4, sort_keys=True) + "\n")
+        out[kind].write_text(json.dumps(profile, indent=4, sort_keys=True) + "\n")
     return out
+
+
+def write_flat_profiles(dest: Path, profiles: dict[str, Path] = ORCA_PROFILES) -> dict[str, Path]:
+    """Flatten each profile into dest/<kind>.json; returns kind -> path."""
+    return write_profile_set(dest, {kind: flatten_profile(kind, path) for kind, path in profiles.items()})
+
+
+# =============================================================================
+# Per-model settings
+# =============================================================================
+
+MODEL_SETTINGS_TABLE = "[tool.scad-tools.slice.settings]"
+
+
+def _profile_value(value, base, where: str):
+    """A TOML value in OrcaSlicer's string form, shaped like the value it replaces."""
+    if isinstance(value, list):
+        if not isinstance(base, list):
+            raise click.ClickException(f"{where}: is a single value in the profile, not a list")
+        return [_profile_value(v, None, where) for v in value]
+    if isinstance(value, bool):
+        text = "1" if value else "0"
+    elif isinstance(value, (int, float, str)):
+        text = str(value)
+    else:
+        raise click.ClickException(f"{where}: expected a string, number, boolean, or list")
+    # Per-extruder/per-filament settings are lists; a scalar applies to each
+    return [text] * len(base) if isinstance(base, list) else text
+
+
+def load_model_settings(
+    base_path: Path, flat: dict[str, dict], pyproject: Path = Path("pyproject.toml")
+) -> dict[str, dict[str, dict]]:
+    """
+    Per-model slicer overrides, e.g.
+
+        [tool.scad-tools.slice.settings."binder/dual_phone_case.scad"]
+        enable_support = false   # print-in-place hinge: support would fuse it
+
+    Returns {model path: {kind: {key: value}}}, with each key routed to the
+    flattened profile (machine, process, or filament) that defines it and its
+    value converted to OrcaSlicer's form. A key no profile defines is an error
+    (a typo would otherwise slice with the setting unchanged); one that equals
+    the profile's value only warns.
+    """
+    if not pyproject.exists():
+        return {}
+    try:
+        with open(pyproject, "rb") as f:
+            config = tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        raise click.ClickException(f"Can't read slicer settings from {pyproject}: {e}")
+    tables = config.get("tool", {}).get("scad-tools", {}).get("slice", {}).get("settings", {})
+
+    out: dict[str, dict[str, dict]] = {}
+    for model, table in tables.items():
+        where = f'{MODEL_SETTINGS_TABLE[:-1]}."{model}"]'
+        if not isinstance(table, dict):
+            raise click.ClickException(f"{where} must be a table of setting = value")
+        if not (base_path / model).is_file():
+            click.secho(f"⚠ Slicer settings match no model: {base_path / model}", fg="yellow", err=True)
+        for key, value in table.items():
+            kinds = [kind for kind, profile in flat.items() if key in profile]
+            if key in META_KEYS or not kinds:
+                raise click.ClickException(
+                    f"{where}: {key!r} is not a setting in the machine, process, or filament profile "
+                    "(see `scad-tools profiles show <kind>`)"
+                )
+            kind = kinds[0]
+            converted = _profile_value(value, flat[kind][key], f"{where}.{key}")
+            if _normalize(converted) == _normalize(flat[kind][key]):
+                click.secho(f"⚠ {where}.{key} = {value!r} is already the profile's value", fg="yellow", err=True)
+            out.setdefault(model, {}).setdefault(kind, {})[key] = converted
+    return out
+
+
+def apply_model_settings(flat: dict[str, dict], overrides: dict[str, dict]) -> dict[str, dict]:
+    """flat with one model's overrides layered on (inputs are not modified)."""
+    return {kind: {**profile, **overrides.get(kind, {})} for kind, profile in flat.items()}
 
 
 # =============================================================================

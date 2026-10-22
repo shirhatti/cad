@@ -20,11 +20,13 @@ SUPPORT_FEATURES = {"Support", "Support interface", "Support transition"}
 # External bridges span air; "Internal Bridge" spans sparse infill and is short
 BRIDGE_FEATURES = {"Bridge"}
 
-# A bridge line counts as resting on support where support was printed within
-# this XY distance on one of the few layers below it (support sits a top-z
-# gap below the part, so the layer directly under may be empty).
-SUPPORT_GRID_MM = 2.0
-SUPPORT_LOOKBACK_LAYERS = 3
+# A point on a bridge line is anchored where anything (part or support) was
+# extruded within a grid cell or its neighbors (1-2 mm) on one of the last few
+# layers (support sits a top-z gap below the part, so the layer directly under
+# it may be empty). Gaps narrower than ~2-4 mm therefore read as anchored,
+# which is fine: they bridge trivially.
+GRID_MM = 1.0
+LOOKBACK_LAYERS = 3
 SAMPLE_STEP_MM = 0.5
 
 _WORD_RE = re.compile(r"([A-Z])(-?\d*\.?\d+)")
@@ -71,11 +73,11 @@ def _samples(x0, y0, x1, y1):
 
 
 def _cell(px, py) -> tuple[int, int]:
-    return (int(px // SUPPORT_GRID_MM), int(py // SUPPORT_GRID_MM))
+    return (int(px // GRID_MM), int(py // GRID_MM))
 
 
 def _unsupported_run(x0, y0, x1, y1, below: set) -> float:
-    """Longest stretch of a straight line with no support cell (or neighbor) below."""
+    """Longest stretch of a straight line with no extrusion cell (or neighbor) below."""
     length, points = _samples(x0, y0, x1, y1)
     step = length / max(1, len(points) - 1)
     best = run = 0.0
@@ -93,11 +95,13 @@ def gcode_metrics(gcode: str) -> dict:
     `; FEATURE:` annotations. Extrusion is summed per feature (positive E only,
     so retractions and wipes don't count).
 
-    Bridges: the slicer also uses bridge flow for the first layer over support
-    interface, so the longest Bridge line says little on its own. max_bridge_mm
-    is the longest run of a Bridge line with no support printed beneath it in
-    the last few layers, i.e. the longest span actually over air. (Arcs count
-    as their chord, which only shortens the estimate for curved bridges.)
+    Bridges: a Bridge line's length says little on its own. The slicer also
+    uses bridge flow for the first layer over support interface, and it may
+    run lines lengthwise along a narrow channel (e.g. the roof of a pin bore).
+    max_bridge_mm is the longest run of a Bridge line with nothing (part or
+    support) extruded beneath it in the last few layers, i.e. the longest
+    span actually over air. (Arcs count as their chord, which only shortens
+    the estimate for curved bridges.)
     """
     x = y = 0.0
     e_abs = 0.0
@@ -107,7 +111,7 @@ def gcode_metrics(gcode: str) -> dict:
     max_z = 0.0
     extruded: dict[str, float] = {}
     longest_bridge = 0.0
-    support_cells: list[set] = [set()]  # per layer, newest last
+    material_cells: list[set] = [set()]  # extruded grid cells per layer, newest last
 
     for raw in gcode.splitlines():
         line = raw.strip()
@@ -118,7 +122,7 @@ def gcode_metrics(gcode: str) -> dict:
                 feature = line[len("; FEATURE:"):].strip()
             elif line.startswith("; CHANGE_LAYER"):
                 layers += 1
-                support_cells = support_cells[-SUPPORT_LOOKBACK_LAYERS:] + [set()]
+                material_cells = material_cells[-LOOKBACK_LAYERS:] + [set()]
             elif line.startswith("; Z_HEIGHT:"):
                 try:
                     max_z = max(max_z, float(line.split(":", 1)[1]))
@@ -150,11 +154,10 @@ def gcode_metrics(gcode: str) -> dict:
             e_abs = e_abs + words["E"] if relative_e else words["E"]
         if de > 0 and feature:
             extruded[feature] = extruded.get(feature, 0.0) + de
-            if feature in SUPPORT_FEATURES:
-                support_cells[-1].update(_cell(px, py) for px, py in _samples(x, y, nx, ny)[1])
-            elif feature in BRIDGE_FEATURES:
-                below = set().union(*support_cells[:-1])
+            if feature in BRIDGE_FEATURES:
+                below = set().union(*material_cells[:-1])
                 longest_bridge = max(longest_bridge, _unsupported_run(x, y, nx, ny, below))
+            material_cells[-1].update(_cell(px, py) for px, py in _samples(x, y, nx, ny)[1])
         x, y = nx, ny
 
     total = sum(extruded.values()) or 1.0

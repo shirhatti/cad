@@ -43,6 +43,10 @@ uv run scad-tools profiles lint            # broken chains, typo'd keys, no-op o
 
 ## The overrides
 
+These apply to every model. A setting one model needs (e.g. supports off for
+the print-in-place phone case) goes in `pyproject.toml` under
+`[tool.scad-tools.slice.settings."<model>"]` instead; see the main README.
+
 ### Machine (`Bambu Lab A1 0.4 nozzle.json`)
 - `layer_change_gcode` adds `G92 E0`. Bambu printers use relative extrusion;
   the GUI adds this reset when slicing, but the CLI does not.

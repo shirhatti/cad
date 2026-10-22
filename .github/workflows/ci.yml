@@ -183,5 +183,5 @@ jobs:
           artifacts/gcode/*.3mf
           artifacts/logs/*.log
           artifacts/metrics/*.json
-          artifacts/profiles/*.json
+          artifacts/profiles/**/*.json
         retention-days: 7
