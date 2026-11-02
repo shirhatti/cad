@@ -1,6 +1,6 @@
 # Rangoli Moulds
 
-3D-printable Diwali rangoli moulds in a traditional mandala style. Each mould
+3D-printable Diwali rangoli moulds: floral mandalas in a traditional style. Each mould
 is a network of thin walls tracing the rangoli's outlines. Lay it on the
 floor, spoon a different colour of powder into each cell, then lift it
 straight up to leave a crisp, multi-colour rangoli.
@@ -13,7 +13,7 @@ together. You print one wedge STL several times.
 | --- | --- | --- | --- | --- |
 | `phool_mandala.scad` | 12 onion-dome petals with feather fans and finials over pointed petals; scallop, dot and confetti rings | 1 centre + 6 wedges | ~1h40m, 36 g | ~10h, ~220 g |
 | `kamal_mandala.scad` | three layers of lotus petals (16-fold) around a ring of buds, a dot ring and a flower centre | 1 centre + 8 wedges | ~1h05m, 25 g | ~9h, ~215 g |
-| `deepa_mandala.scad` | 12 diyas with sparks, paisleys alternating with flame-tipped arches, a kolam ring and a star centre | 1 centre + 6 wedges | ~1h20m, 31 g | ~8h, ~195 g |
+| `genda_mandala.scad` | marigold: round petals in two layers on a ruffled backing, ringed with leaves; a ring of five-petal blossoms and a flower centre (16-fold) | 1 centre + 8 wedges | ~1h00m, 23 g | ~8h30m, ~200 g |
 
 Times and weights are for PLA with the repo's Bambu Lab A1 profile.
 
@@ -21,7 +21,7 @@ Times and weights are for PLA with the repo's Bambu Lab A1 profile.
 
 Every design has a `part` Customizer option:
 
-- `wedge` (default): print it 6 times (8 times for Kamal)
+- `wedge` (default): print it 6 times for Phool, 8 times for Kamal and Genda
 - `center`: print it once
 - `assembly`: preview of the whole mould as printed
 - `colours`: preview of a finished rangoli, with a suggested palette
@@ -56,8 +56,8 @@ still fits a 256×256mm plate. Wall and tie sizes stay the same at every scale.
   neighbour's −edge. A knob on each wedge's inner arc reaches over the centre
   wall into the centre piece. `clearance` (default 0.15mm per side) sets the
   fit.
-- **Seams** run along the axes of the smaller petals or sparks, so no seam
-  cuts through a big motif.
+- **Seams** run along petal axes chosen so no seam cuts through a big
+  motif off-centre.
 
 Each design has a `*_test.scad` that checks knob placement and plate fit from
 Ø300 to Ø480.

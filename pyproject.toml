@@ -55,7 +55,7 @@ enable_support = false  # print-in-place hinge: support in the knuckles would fu
 enable_support = false
 [tool.scad-tools.slice.settings."rangoli/kamal_mandala.scad"]
 enable_support = false
-[tool.scad-tools.slice.settings."rangoli/deepa_mandala.scad"]
+[tool.scad-tools.slice.settings."rangoli/genda_mandala.scad"]
 enable_support = false
 
 # Print expectations: checked by `scad-tools mesh` (STL) and `scad-tools slice`
@@ -112,7 +112,7 @@ max_time = "1h15m"
 max_filament_g = 29
 supports = false       # designed support-free (prints ties-down)
 
-[tool.scad-tools.expect.models."rangoli/deepa_mandala.scad"]
-max_time = "1h29m"
-max_filament_g = 36
+[tool.scad-tools.expect.models."rangoli/genda_mandala.scad"]
+max_time = "1h11m"
+max_filament_g = 27
 supports = false       # designed support-free (prints ties-down)

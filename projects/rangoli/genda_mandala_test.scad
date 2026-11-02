@@ -1,4 +1,4 @@
-// Unit tests for the Deepa Mandala rangoli mould
+// Unit tests for the Genda Mandala rangoli mould
 //
 // Checks the joints and the plate fit across the Customizer's size range.
 //
@@ -7,12 +7,12 @@
 /* [Hidden] */
 
 RENDER_RANGOLI = false;
-include <deepa_mandala.scad>
+include <genda_mandala.scad>
 
-echo("=== Deepa Mandala Tests ===");
+echo("=== Genda Mandala Tests ===");
 
 // The design stays inside the outer radius it is split at.
-_tip = FLAME_AT + 11;
+_tip = LEAF[0] + LEAF[1];
 assert(_tip <= 225, str("FAIL: pattern reaches r=", _tip, " beyond the Ø450 layout"));
 echo("PASS: pattern fits inside its outer radius");
 

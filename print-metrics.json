@@ -182,20 +182,20 @@
       "time_s": 16887
     }
   },
-  "rangoli/deepa_mandala.scad": {
+  "rangoli/genda_mandala.scad": {
     "mesh": {
-      "bed_contact_mm2": 5774.7,
+      "bed_contact_mm2": 4268.3,
       "bodies": 1,
       "fits_plate": true,
       "min_wall_mm": 1.2,
-      "overhang_mm2": 20.2,
+      "overhang_mm2": 32.4,
       "size_mm": [
-        185.62,
-        223.7,
+        174.2,
+        128.01,
         8.0
       ],
-      "triangles": 24284,
-      "volume_cm3": 27.3,
+      "triangles": 19998,
+      "volume_cm3": 20.49,
       "watertight": true
     },
     "slice": {
@@ -210,8 +210,8 @@
         "Overhang wall",
         "Top surface"
       ],
-      "filament_g": 30.8,
-      "filament_m": 10.32,
+      "filament_g": 23.2,
+      "filament_m": 7.77,
       "fits_plate": true,
       "height_mm": 8.0,
       "layers": 40,
@@ -222,7 +222,7 @@
       },
       "support_pct": 0.0,
       "supports": false,
-      "time_s": 4624
+      "time_s": 3726
     }
   },
   "rangoli/kamal_mandala.scad": {
