@@ -182,6 +182,136 @@
       "time_s": 16887
     }
   },
+  "rangoli/deepa_mandala.scad": {
+    "mesh": {
+      "bed_contact_mm2": 5774.7,
+      "bodies": 1,
+      "fits_plate": true,
+      "min_wall_mm": 1.2,
+      "overhang_mm2": 20.2,
+      "size_mm": [
+        185.62,
+        223.7,
+        8.0
+      ],
+      "triangles": 24284,
+      "volume_cm3": 27.3,
+      "watertight": true
+    },
+    "slice": {
+      "bridge_pct": 0.0,
+      "features": [
+        "Bottom surface",
+        "Custom",
+        "Gap infill",
+        "Inner wall",
+        "Internal solid infill",
+        "Outer wall",
+        "Overhang wall",
+        "Top surface"
+      ],
+      "filament_g": 30.8,
+      "filament_m": 10.32,
+      "fits_plate": true,
+      "height_mm": 8.0,
+      "layers": 40,
+      "max_bridge_mm": 0.0,
+      "overhang_wall_pct": 0.0,
+      "settings": {
+        "enable_support": "0"
+      },
+      "support_pct": 0.0,
+      "supports": false,
+      "time_s": 4624
+    }
+  },
+  "rangoli/kamal_mandala.scad": {
+    "mesh": {
+      "bed_contact_mm2": 4843.3,
+      "bodies": 1,
+      "fits_plate": true,
+      "min_wall_mm": 0.86,
+      "overhang_mm2": 31.3,
+      "size_mm": [
+        184.94,
+        155.51,
+        8.0
+      ],
+      "triangles": 17238,
+      "volume_cm3": 22.5,
+      "watertight": true
+    },
+    "slice": {
+      "bridge_pct": 0.0,
+      "features": [
+        "Bottom surface",
+        "Custom",
+        "Gap infill",
+        "Inner wall",
+        "Internal solid infill",
+        "Outer wall",
+        "Overhang wall",
+        "Sparse infill",
+        "Top surface"
+      ],
+      "filament_g": 25.4,
+      "filament_m": 8.53,
+      "fits_plate": true,
+      "height_mm": 8.0,
+      "layers": 40,
+      "max_bridge_mm": 0.0,
+      "overhang_wall_pct": 0.0,
+      "settings": {
+        "enable_support": "0"
+      },
+      "support_pct": 0.0,
+      "supports": false,
+      "time_s": 3949
+    }
+  },
+  "rangoli/phool_mandala.scad": {
+    "mesh": {
+      "bed_contact_mm2": 6796.6,
+      "bodies": 1,
+      "fits_plate": true,
+      "min_wall_mm": 1.2,
+      "overhang_mm2": 22.9,
+      "size_mm": [
+        177.95,
+        190.28,
+        8.0
+      ],
+      "triangles": 35572,
+      "volume_cm3": 31.99,
+      "watertight": true
+    },
+    "slice": {
+      "bridge_pct": 0.0,
+      "features": [
+        "Bottom surface",
+        "Custom",
+        "Gap infill",
+        "Inner wall",
+        "Internal solid infill",
+        "Outer wall",
+        "Overhang wall",
+        "Top surface"
+      ],
+      "filament_g": 36.1,
+      "filament_m": 12.11,
+      "fits_plate": true,
+      "height_mm": 8.0,
+      "layers": 40,
+      "max_bridge_mm": 0.0,
+      "overhang_wall_pct": 0.0,
+      "settings": {
+        "enable_support": "0"
+      },
+      "support_pct": 0.0,
+      "supports": false,
+      "time_s": 5904
+    }
+  },
   "test/test_cube.scad": {
     "mesh": {
       "bed_contact_mm2": 100.0,

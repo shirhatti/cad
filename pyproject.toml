@@ -49,6 +49,15 @@ tree-sitter-openscad = { git = "https://github.com/openscad/tree-sitter-openscad
 [tool.scad-tools.slice.settings."binder/dual_phone_case.scad"]
 enable_support = false  # print-in-place hinge: support in the knuckles would fuse it
 
+# Rangoli moulds print ties-down; the only overhangs are short wall bridges
+# over the jigsaw sockets, and support there would fill the socket.
+[tool.scad-tools.slice.settings."rangoli/phool_mandala.scad"]
+enable_support = false
+[tool.scad-tools.slice.settings."rangoli/kamal_mandala.scad"]
+enable_support = false
+[tool.scad-tools.slice.settings."rangoli/deepa_mandala.scad"]
+enable_support = false
+
 # Print expectations: checked by `scad-tools mesh` (STL) and `scad-tools slice`
 # (3MF). Defaults apply to every model; per-model tables override them. Keys:
 #   mesh:  watertight, bodies, fits_plate, min_wall_mm, max_overhang_mm2,
@@ -91,3 +100,19 @@ supports = false       # designed support-free (gussets + 45° chamfers)
 [tool.scad-tools.expect.models."wall/elitemini_800_g9_wall_mount.scad"]
 max_time = "4h40m"
 max_filament_g = 140
+
+# Rangoli moulds: budgets are for one wedge (the default part, printed N times)
+[tool.scad-tools.expect.models."rangoli/phool_mandala.scad"]
+max_time = "1h53m"
+max_filament_g = 42
+supports = false       # designed support-free (prints ties-down)
+
+[tool.scad-tools.expect.models."rangoli/kamal_mandala.scad"]
+max_time = "1h15m"
+max_filament_g = 29
+supports = false       # designed support-free (prints ties-down)
+
+[tool.scad-tools.expect.models."rangoli/deepa_mandala.scad"]
+max_time = "1h29m"
+max_filament_g = 36
+supports = false       # designed support-free (prints ties-down)
