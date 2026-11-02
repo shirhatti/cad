@@ -1,7 +1,7 @@
 // Phool (Flower) Mandala Rangoli Mould
 //
 // A 12-petal Diwali flower mandala, built as a mould you fill with coloured
-// powder. From the centre out: a lotus flower on a dark disc, a ring of dots, a ring
+// powder. From the centre out: a traditional lotus on a dark disc, a ring of dots, a ring
 // of round scallops (each with a dot), a confetti ring of kites and dots,
 // then twelve onion-dome petals (outlined, with a dome and a fan of
 // feathers inside) layered over twelve pointed petals, each big petal
@@ -116,45 +116,62 @@ module confetti_kite() { translate([CONFETTI_R - 11, 0]) rangoli_kite(22, 10, 0.
 
 // ---- Children for the mould (scaled to size) ----
 
-// ---- Centre lotus (side view, upright along +Y, inside the centre wall) ----
-// Five petals fan out from a point hidden behind a bowl; a dot below.
-LOTUS_SCALE = 1.3;               // lotus size (the numbers below are at 1.0)
-LOTUS_BASE = [0, -12];           // where the petals meet (behind the bowl)
-// Petals back to front: [angle from upright (deg), length, width]
-LOTUS_PETALS = [[-62, 29, 13], [62, 29, 13], [-30, 37, 17], [30, 37, 17], [0, 42, 20]];
-LOTUS_VEINED = [2, 3, 4];        // indices of petals with a vein
-LOTUS_DOTS_Y = -30;              // dot under the bowl (one only: the centre's joint sockets sit either side)
+// ---- Centre lotus (traditional front view, upright along +Y) ----
+// Five upright petals fan out from points along a short base: a broad
+// onion-shaped centre petal with two nested outlines and two pairs of side
+// petals with one inner outline each, over three small petals pointing
+// down. Dots sit past the centre and inner petal tips. Everything stays
+// inside r≈34 (and the dots off the 0°/60°/... directions) so the centre's
+// joint sockets are clear.
+// Petals back to front: [base x, base y, angle from upright (deg), length,
+//                        width, bulge, tip pinch, inner outline insets]
+LOTUS_PETALS = [
+    [0, -10, 180, 14, 12, 1.6, 1.5, []],        // bottom centre
+    [-4, -12, -118, 17, 11, 1.8, 1.6, []],      // bottom pair
+    [4, -12, 118, 17, 11, 1.8, 1.6, []],
+    [-9, -9, -72, 26, 17, 2.2, 1.5, [4]],       // outer pair
+    [9, -9, 72, 26, 17, 2.2, 1.5, [4]],
+    [-6, -8, -38, 34, 21, 2.2, 1.5, [4.5]],     // inner pair
+    [6, -8, 38, 34, 21, 2.2, 1.5, [4.5]],
+    [0, -8, 0, 42, 27, 2.4, 1.6, [4.5, 9]],     // centre petal
+];
+LOTUS_DOT_R = 2.4;
+LOTUS_DOT_GAP = 4.5;             // dot centre beyond a petal tip
+LOTUS_DOTTED = [5, 6, 7];        // petals with a dot past the tip
 
-module lotus_petal(p) scale(LOTUS_SCALE) translate(LOTUS_BASE) rotate(90 - p[0]) rangoli_ogee(p[1], p[2], 2, 1.3);
-module lotus_vein(p) scale(LOTUS_SCALE) translate(LOTUS_BASE) rotate(90 - p[0]) translate([12, 0]) rangoli_vesica(p[1] - 22, 5);
-module lotus_bowl() scale(LOTUS_SCALE) intersection() {
-    translate([0, -9]) scale([1, 0.6]) circle(25);
-    translate([-30, -40]) square([60, 31]);
+// Half-width along a lotus petal: pointed at the base (t=0) and the tip
+// (t=1), round in the middle; `bulge` swells it toward the tip, `pinch`
+// draws the tip out like an onion dome. Normalised so the widest point is w/2.
+function _lotus_raw(t, bulge, pinch) = pow(t, 0.55) * pow(1 - t, pinch) * (1 + bulge * t);
+function _lotus_hw(t, w, bulge, pinch) =
+    w / 2 * _lotus_raw(t, bulge, pinch) / max([for (i = [1:49]) _lotus_raw(i / 50, bulge, pinch)]);
+module lotus_shape(l, w, bulge, pinch, steps = 48) {
+    polygon(concat(
+        [for (i = [0:steps]) let(t = i / steps) [t * l, _lotus_hw(t, w, bulge, pinch)]],
+        [for (i = [steps - 1:-1:1]) let(t = i / steps) [t * l, -_lotus_hw(t, w, bulge, pinch)]]
+    ));
 }
-module lotus_dot(x) scale(LOTUS_SCALE) translate([x, LOTUS_DOTS_Y]) circle(2.6);
-module lotus_dots() lotus_dot(0);
-// Everything in front of petal i (later petals and the bowl).
+module lotus_petal(p) translate([p[0], p[1]]) rotate(90 - p[2]) lotus_shape(p[3], p[4], p[5], p[6]);
+module lotus_dot(p) translate([p[0], p[1]]) rotate(90 - p[2]) translate([p[3] + LOTUS_DOT_GAP, 0]) circle(LOTUS_DOT_R);
+module lotus_dots() for (i = LOTUS_DOTTED) lotus_dot(LOTUS_PETALS[i]);
+// Everything in front of petal i (the petals drawn after it).
 module lotus_in_front(i) {
-    lotus_bowl();
     if (i + 1 < len(LOTUS_PETALS)) for (j = [i + 1:len(LOTUS_PETALS) - 1]) lotus_petal(LOTUS_PETALS[j]);
 }
 module lotus_walls(ww) {
-    for (i = [0:len(LOTUS_PETALS) - 1]) difference() {
+    for (i = [0:len(LOTUS_PETALS) - 1]) let(p = LOTUS_PETALS[i]) difference() {
         union() {
-            rangoli_wall(ww) lotus_petal(LOTUS_PETALS[i]);
-            if (len(search(i, LOTUS_VEINED)) > 0) rangoli_wall(ww) lotus_vein(LOTUS_PETALS[i]);
+            rangoli_wall(ww) lotus_petal(p);
+            for (inset = p[7]) rangoli_wall(ww) offset(delta = -inset) lotus_petal(p);
         }
         offset(delta = -ww / 2) lotus_in_front(i);
     }
-    rangoli_wall(ww) lotus_bowl();
-    rangoli_wall(ww) lotus_dots();
+    for (i = LOTUS_DOTTED) rangoli_wall(ww) lotus_dot(LOTUS_PETALS[i]);
 }
-// Ties: along every petal axis out to the centre wall, and straight down
-// through the bowl and the dot.
+// Ties: along every petal axis from its base out to the centre wall
+// (through each nested outline and dot).
 module lotus_ties(tw) {
-    base = LOTUS_SCALE * LOTUS_BASE;
-    for (p = LOTUS_PETALS) translate(base) rotate(90 - p[0]) translate([0, -tw / 2]) square([R_CENTRE + 20, tw]);
-    translate([-tw / 2, -R_CENTRE - 5]) square([tw, R_CENTRE + 5 + base[1]]);
+    for (p = LOTUS_PETALS) translate([p[0], p[1]]) rotate(90 - p[2]) translate([0, -tw / 2]) square([R_CENTRE + 20, tw]);
 }
 
 // Everything the big petals cover (above the confetti ring).
@@ -242,13 +259,15 @@ module phool_colours() {
     layer(9, "white") rangoli_ring(24, 7.5) translate([DOT_RING_R, 0]) circle(4.5);
     layer(9, "midnightblue") circle(R_CENTRE);
     layer(9, "white") rangoli_ring(12) for (r = [160, 170, 180]) translate([r, 0]) circle(2.2);
-    // Centre lotus, back to front
-    for (i = [0:len(LOTUS_PETALS) - 1])
-        layer(10 + i, ["mediumvioletred", "mediumvioletred", "deeppink", "deeppink", "hotpink"][i])
-            lotus_petal(LOTUS_PETALS[i]);
-    for (i = LOTUS_VEINED) layer(10 + i, "pink") translate([0, 0, 0.01]) lotus_vein(LOTUS_PETALS[i]);
-    layer(15, "forestgreen") lotus_bowl();
-    layer(15, "gold") lotus_dots();
+    // Centre lotus, back to front: each petal deepens in colour toward its core
+    shades = ["mediumvioletred", "deeppink", "hotpink", "pink"];
+    for (i = [0:len(LOTUS_PETALS) - 1]) let(p = LOTUS_PETALS[i]) {
+        layer(10 + i, shades[0]) lotus_petal(p);
+        for (k = [0:1:len(p[7]) - 1])
+            color(shades[k + 1]) translate([0, 0, (10 + i) * 0.02 + 0.005 * (k + 1)])
+                linear_extrude(height = 0.02) scale(s) offset(delta = -p[7][k]) lotus_petal(p);
+    }
+    layer(18, "gold") lotus_dots();
 }
 
 if (is_undef(RENDER_RANGOLI) ? true : RENDER_RANGOLI)
