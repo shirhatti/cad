@@ -11,7 +11,7 @@ together. You print one wedge STL several times.
 
 | Design | Pattern | Pieces | Per wedge | Whole mould |
 | --- | --- | --- | --- | --- |
-| `phool_mandala.scad` | 12 onion-dome petals with feather fans and finials over pointed petals; scallop, dot and confetti rings | 1 centre + 6 wedges | ~1h40m, 36 g | ~10h, ~220 g |
+| `phool_mandala.scad` | a lotus in the centre; scallop, dot and confetti rings; 12 onion-dome petals with feather fans and finials over pointed petals | 1 centre + 6 wedges | ~1h40m, 36 g | ~10h, ~220 g |
 | `kamal_mandala.scad` | three layers of lotus petals (16-fold) around a ring of buds, a dot ring and a flower centre | 1 centre + 8 wedges | ~1h05m, 25 g | ~9h, ~215 g |
 | `genda_mandala.scad` | marigold: round petals in two layers on a ruffled backing, ringed with leaves; a ring of five-petal blossoms and a flower centre (16-fold) | 1 centre + 8 wedges | ~1h00m, 23 g | ~8h30m, ~200 g |
 
